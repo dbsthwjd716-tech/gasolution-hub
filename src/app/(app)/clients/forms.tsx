@@ -1,0 +1,155 @@
+"use client";
+
+import { useActionState, useState } from "react";
+import { checkBizNo, formatBizNo } from "@/lib/bizno";
+import type { FormState } from "./actions";
+
+type Action = (prev: FormState, f: FormData) => Promise<FormState>;
+
+export type ClientValues = {
+  company_name?: string;
+  business_number?: string | null;
+  representative_name?: string | null;
+  address?: string | null;
+  business_type?: string | null;
+  business_item?: string | null;
+  billing_emails?: string[];
+  status?: string;
+  kinds?: string[];
+  memo?: string | null;
+};
+
+function Message({ state }: { state: FormState }) {
+  if (state.error) return <p className="text-sm text-danger" role="alert">{state.error}</p>;
+  if (state.ok) return <p className="text-sm text-[var(--ok-ink)]">{state.ok}</p>;
+  return null;
+}
+
+// 거래처 등록·수정 양식
+export function ClientForm({
+  action,
+  initial = {},
+  submitLabel,
+  showBrand = false,
+  readOnly = false,
+}: {
+  action: Action;
+  initial?: ClientValues;
+  submitLabel: string;
+  showBrand?: boolean;
+  readOnly?: boolean;
+}) {
+  const [state, formAction, pending] = useActionState(action, { error: "" });
+  const [bn, setBn] = useState(formatBizNo(initial.business_number ?? null) || "");
+  const bnCheck = checkBizNo(bn);
+  const kinds = initial.kinds ?? ["ad"];
+
+  return (
+    <form action={formAction} className="space-y-5">
+      <fieldset disabled={readOnly} className="grid gap-4 md:grid-cols-2">
+        <div className="md:col-span-2">
+          <label className="label" htmlFor="company_name">상호 (사업자등록증 기준) *</label>
+          <input id="company_name" name="company_name" required defaultValue={initial.company_name} className="field" />
+        </div>
+        <div>
+          <label className="label" htmlFor="business_number">사업자번호</label>
+          <input
+            id="business_number"
+            name="business_number"
+            inputMode="numeric"
+            placeholder="000-00-00000"
+            value={bn}
+            onChange={(e) => setBn(e.target.value)}
+            className="field"
+          />
+          <p className={`mt-1 text-xs ${bnCheck.ok ? "text-ink-soft" : "text-danger"}`}>
+            {!bnCheck.ok
+              ? bnCheck.message
+              : bnCheck.value
+                ? "확인됨"
+                : "비워 두면 임시 거래처로 등록됩니다. 나중에 채우면 됩니다."}
+          </p>
+        </div>
+        <div>
+          <label className="label" htmlFor="representative_name">대표자</label>
+          <input id="representative_name" name="representative_name" defaultValue={initial.representative_name ?? ""} className="field" />
+        </div>
+        <div className="md:col-span-2">
+          <label className="label" htmlFor="address">사업장 주소</label>
+          <input id="address" name="address" defaultValue={initial.address ?? ""} className="field" />
+        </div>
+        <div>
+          <label className="label" htmlFor="business_type">업태</label>
+          <input id="business_type" name="business_type" defaultValue={initial.business_type ?? ""} className="field" />
+        </div>
+        <div>
+          <label className="label" htmlFor="business_item">종목</label>
+          <input id="business_item" name="business_item" defaultValue={initial.business_item ?? ""} className="field" />
+        </div>
+        <div className="md:col-span-2">
+          <label className="label" htmlFor="billing_emails">세금계산서 받는 메일 (여러 개는 쉼표로)</label>
+          <input id="billing_emails" name="billing_emails" defaultValue={(initial.billing_emails ?? []).join(", ")} className="field" />
+        </div>
+        <div>
+          <span className="label">거래 구분</span>
+          <div className="flex gap-4 pt-1 text-sm">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" name="kinds" value="ad" defaultChecked={kinds.includes("ad")} /> 광고 대행
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" name="kinds" value="viral" defaultChecked={kinds.includes("viral")} /> 바이럴
+            </label>
+          </div>
+        </div>
+        <div>
+          <label className="label" htmlFor="status">상태</label>
+          <select id="status" name="status" defaultValue={initial.status ?? "active"} className="field">
+            <option value="lead">문의·계약 전</option>
+            <option value="active">운영 중</option>
+            <option value="ended">종료</option>
+          </select>
+        </div>
+        {showBrand && (
+          <div className="md:col-span-2">
+            <label className="label" htmlFor="brand_name">첫 브랜드(광고주) 이름</label>
+            <input id="brand_name" name="brand_name" placeholder="예: 티키타카. 상호와 같으면 그대로 적어 주세요" className="field" />
+          </div>
+        )}
+        <div className="md:col-span-2">
+          <label className="label" htmlFor="memo">메모</label>
+          <textarea id="memo" name="memo" rows={3} defaultValue={initial.memo ?? ""} className="field" />
+        </div>
+      </fieldset>
+      <Message state={state} />
+      {!readOnly && (
+        <button className="btn" disabled={pending || !bnCheck.ok}>
+          {pending ? "저장 중…" : submitLabel}
+        </button>
+      )}
+    </form>
+  );
+}
+
+// 브랜드·계정·연락처·다른 이름처럼 한 줄로 추가하는 작은 양식
+export function InlineForm({
+  action,
+  children,
+  submitLabel = "추가",
+}: {
+  action: Action;
+  children: React.ReactNode;
+  submitLabel?: string;
+}) {
+  const [state, formAction, pending] = useActionState(action, { error: "" });
+  return (
+    <form action={formAction} className="space-y-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+        {children}
+        <button className="btn btn-ghost" disabled={pending}>
+          {pending ? "…" : submitLabel}
+        </button>
+      </div>
+      <Message state={state} />
+    </form>
+  );
+}
