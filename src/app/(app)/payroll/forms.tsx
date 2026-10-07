@@ -56,7 +56,6 @@ export function EntryEditor({ action, profile, tiers, auto, inputs, extras, memo
         <div className="grid gap-2 sm:grid-cols-3">
           <MoneyInput name="naver_spend" label="네이버 소진액 (본인)" value={v.naver_spend} onChange={set("naver_spend")} disabled={readOnly} />
           {!lead && <MoneyInput name="handover_spend" label="인계받은 계정 소진액" value={v.handover_spend} onChange={set("handover_spend")} hint="마감 소진액 100%, 직급·팀 기준 제외" disabled={readOnly} />}
-          {!lead && <MoneyInput name="handover_new_spend" label="인계 첫 달 계정 소진액" value={v.handover_new_spend} onChange={set("handover_new_spend")} hint="80%만 반영" disabled={readOnly} />}
           <MoneyInput name="other_spend" label="네이버 외 매체 소진액" value={v.other_spend} onChange={set("other_spend")} hint={profile.other_in_spend ? "마감 소진액에 합산" : lead ? "매니저 0.2% 기준으로 쓰임" : "마감 소진액에 넣지 않음"} disabled={readOnly} />
           {profile.markup_rate > 0 && <MoneyInput name="markup_fee" label="메타·구글 마크업 수수료 (VAT 포함)" value={v.markup_fee} onChange={set("markup_fee")} disabled={readOnly} />}
           {profile.coupang_rate > 0 && <MoneyInput name="coupang_fee" label="쿠팡 마크업 수수료" value={v.coupang_fee} onChange={set("coupang_fee")} disabled={readOnly} />}
@@ -205,7 +204,7 @@ export function DashboardImport({ action }: { action: Action }) {
   return (
     <form action={formAction} className="space-y-1">
       <button className="btn btn-ghost" disabled={pending}>{pending ? "불러오는 중…" : "대시보드에서 소진액 불러오기"}</button>
-      <p className="text-[11px] text-ink-soft">네이버(이관 광고비)·메타 소진액, 그리고 대시보드에서 「진원 인계건」으로 지정한 그룹의 소진액(서진원 인계 계정)을 채웁니다. 카카오 등 대시보드에 없는 매체는 불러온 뒤 직접 더해 주세요.</p>
+      <p className="text-[11px] text-ink-soft">네이버(이관 광고비)·메타 소진액, 그리고 대시보드에서 「진원 인계건」으로 지정한 그룹의 소진액(서진원 인계 계정, 100%)을 채웁니다. 카카오 등 대시보드에 없는 매체는 불러온 뒤 직접 더해 주세요.</p>
       <Message state={state} />
     </form>
   );

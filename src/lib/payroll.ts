@@ -27,13 +27,12 @@ export type Tier = { kind: "sales_ae" | "nonsales_ae" | "rank"; min_spend: numbe
 export type Inputs = {
   naver_spend: number; // 본인 네이버 소진액
   handover_spend: number; // 인계받은 계정 소진액 (마감 소진액에 100%, 직급수당·팀 수당에는 제외)
-  handover_new_spend: number; // 인계 첫 달 계정 소진액 (80%만 반영)
   other_spend: number; // 네이버 외 매체 소진액
   markup_fee: number; // 메타·구글 마크업 수수료 (VAT 포함, 받은 금액)
   coupang_fee: number; // 쿠팡 마크업 수수료 기준 금액
   unpaid_markup_fee: number; // 받지 못한 마크업 수수료 → 50% 차감
 };
-export const EMPTY_INPUTS: Inputs = { naver_spend: 0, handover_spend: 0, handover_new_spend: 0, other_spend: 0, markup_fee: 0, coupang_fee: 0, unpaid_markup_fee: 0 };
+export const EMPTY_INPUTS: Inputs = { naver_spend: 0, handover_spend: 0, other_spend: 0, markup_fee: 0, coupang_fee: 0, unpaid_markup_fee: 0 };
 
 export type Auto = {
   viral_sales: number; // 본인 담당 바이럴 판매가 (인센티브 제외 상품 빼고)
@@ -60,7 +59,7 @@ export function pickTier(tiers: Tier[], kind: Tier["kind"], spend: number) {
 
 export function closingSpend(p: Profile, i: Inputs, a: Auto) {
   return (
-    i.naver_spend + i.handover_spend + i.handover_new_spend * 0.8 +
+    i.naver_spend + i.handover_spend +
     (p.other_in_spend ? i.other_spend : 0) +
     (p.viral_in_spend ? a.viral_sales : 0)
   );
@@ -125,8 +124,8 @@ export function teamAuto(rows: { profile: Profile; inputs: Inputs }[], teamGoal:
 
 export function readInputs(v: unknown): Inputs {
   const o = (v ?? {}) as Record<string, unknown>;
-  const n = (k: keyof Inputs) => (Number.isFinite(Number(o[k])) ? Number(o[k]) : 0);
-  return { naver_spend: n("naver_spend"), handover_spend: n("handover_spend"), handover_new_spend: n("handover_new_spend"), other_spend: n("other_spend"), markup_fee: n("markup_fee"), coupang_fee: n("coupang_fee"), unpaid_markup_fee: n("unpaid_markup_fee") };
+  const n = (k: string) => (Number.isFinite(Number(o[k])) ? Number(o[k]) : 0);
+  return { naver_spend: n("naver_spend"), handover_spend: n("handover_spend") + n("handover_new_spend") /* 예전 '인계 첫 달' 값도 100%로 합침 */, other_spend: n("other_spend"), markup_fee: n("markup_fee"), coupang_fee: n("coupang_fee"), unpaid_markup_fee: n("unpaid_markup_fee") };
 }
 
 export function readExtras(v: unknown): Extra[] {

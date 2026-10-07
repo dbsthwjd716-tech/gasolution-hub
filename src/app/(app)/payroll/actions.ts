@@ -68,7 +68,7 @@ export async function removeEntry(ym: string, entryId: string) {
   touch(ym);
 }
 
-const INPUT_KEYS: (keyof Inputs)[] = ["naver_spend", "handover_spend", "handover_new_spend", "other_spend", "markup_fee", "coupang_fee", "unpaid_markup_fee"];
+const INPUT_KEYS: (keyof Inputs)[] = ["naver_spend", "handover_spend", "other_spend", "markup_fee", "coupang_fee", "unpaid_markup_fee"];
 
 export async function saveEntry(ym: string, entryId: string, _p: FormState, f: FormData): Promise<FormState> {
   const { supabase } = await manager();
@@ -195,11 +195,10 @@ export async function importDashboardSpend(ym: string, _p: FormState, _f: FormDa
       naver_spend: d.naver_spend,
       other_spend: Math.round(d.meta_spend / 1.1),
       handover_spend: d.handover_spend,
-      handover_new_spend: d.handover_new_spend,
     };
     const { error: ue } = await supabase.from("payroll_entries").update({ inputs }).eq("id", e.id);
     if (ue) return { error: friendly(ue.message) };
-    const ho = d.handover_spend + d.handover_new_spend;
+    const ho = d.handover_spend;
     done.push(`${name} 네이버 ${d.naver_spend.toLocaleString("ko-KR")} · 메타 ${Math.round(d.meta_spend / 1.1).toLocaleString("ko-KR")}${ho ? ` · 인계 ${ho.toLocaleString("ko-KR")}` : ""}`);
   }
   touch(ym);

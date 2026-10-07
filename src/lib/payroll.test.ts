@@ -71,9 +71,9 @@ test("구간: 경계값 포함, 가장 낮은 구간 미만이면 없음", () =>
   assert.equal(pickTier(TIERS, "sales_ae", 500_000_000)?.rate, 0.1);
 });
 
-test("인계 첫 달 80%, 수습 기본급 90%, 마크업 미입금 50% 차감", () => {
+test("인계 계정 100%, 수습 기본급 90%, 마크업 미입금 50% 차감", () => {
   const p: Profile = { ...base, track: "nonsales_ae", base_pay: 2_000_000, probation: true };
-  const r = calcPay(p, { ...EMPTY_INPUTS, naver_spend: 30_000_000, handover_new_spend: 12_500_000, unpaid_markup_fee: 330_000 }, EMPTY_AUTO, TIERS);
+  const r = calcPay(p, { ...EMPTY_INPUTS, naver_spend: 30_000_000, handover_spend: 10_000_000, unpaid_markup_fee: 330_000 }, EMPTY_AUTO, TIERS);
   assert.equal(r.spend, 40_000_000);
   assert.equal(line(r, "base"), 1_800_000);
   assert.equal(line(r, "closing"), 52_000);
