@@ -90,7 +90,7 @@ export default async function ViralDetail(props: PageProps<"/viral/[id]">) {
             {o.paid_date ? `입금 ${o.paid_date}` : "입금 전"} · 담당 {o.staff_name ?? "미지정"}
             {o.derived_staff_name && <span className="ml-2 chip chip-info">파생 · {o.derived_staff_name}</span>}
             {o.source_sheet && (
-              <span className="ml-2 chip chip-muted">
+              <span className="ml-2 chip chip-muted whitespace-nowrap">
                 시트 {o.source_sheet} {rows.map((i) => i.source_row).filter(Boolean).join("·")}행에서 옮김
               </span>
             )}
