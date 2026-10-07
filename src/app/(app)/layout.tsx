@@ -7,6 +7,7 @@ import { signOut } from "../login/actions";
 const NAV = [
   { href: "/clients", label: "거래처" },
   { href: "/viral", label: "바이럴" },
+  { href: "/leads", label: "인입 문의" },
   { href: "/contracts", label: "계약" },
   { href: "/billing", label: "정산 · 견적" },
 ];
