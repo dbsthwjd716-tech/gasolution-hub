@@ -113,6 +113,7 @@ export default async function ViralPage(props: PageProps<"/viral">) {
         <div className="flex gap-2">
           <Link href="/viral/balances" className="btn btn-ghost">환불·미소진 잔액</Link>
           <Link href="/viral/prices" className="btn btn-ghost">단가표</Link>
+          {canViewCost(me) && <Link href="/viral/statements" className="btn btn-ghost">협력사 견적서</Link>}
           {(me?.role === "ceo" || me?.role === "lead") && <Link href="/viral/import" className="btn btn-ghost">시트에서 옮기기</Link>}
           <Link href="/viral/new" className="btn">바이럴 건 입력</Link>
         </div>
