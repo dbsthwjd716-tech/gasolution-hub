@@ -55,7 +55,7 @@ export default async function ViralPrices() {
                     <tr key={r.id} className="border-t border-[var(--glass-border)]">
                       <td className="py-1">{r.product_type}</td><td>{r.platform ?? "공통"}</td><td>{r.product_name ?? "공통"}</td>
                       <td className="text-right">{r.days ? `${r.days}일` : "-"}</td>
-                      <td className="text-right tabular-nums">{won(r.cost_price)}/{r.unit_label}</td>
+                      <td className="text-right tabular-nums">{r.cost_price == null ? "-" : `${won(r.cost_price)}/${r.unit_label}`}</td>
                       <td className="text-right tabular-nums">{won(r.sale_price)}/{r.unit_label}</td>
                     </tr>
                   ))}

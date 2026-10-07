@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
 import { formatBizNo } from "@/lib/bizno";
-import { describeItem, endDate, findPrice, lineAmounts, PLATFORMS, PRODUCT_TYPES, SLOT_DAYS, type PriceRow } from "@/lib/viral-products";
+import { defaultSale, describeItem, endDate, findPrice, lineAmounts, PLATFORMS, PRODUCT_TYPES, SLOT_DAYS, type PriceRow } from "@/lib/viral-products";
 import type { FormState } from "./actions";
 
 type Action = (prev: FormState, f: FormData) => Promise<FormState>;
@@ -25,7 +25,7 @@ export type ItemValues = {
   description: string | null;
   start_date: string | null;
   end_date: string | null;
-  cost_amount: number;
+  cost_amount?: number | null;
   sale_amount: number;
   incentive_excluded?: boolean;
   product_type?: string | null;
@@ -67,6 +67,7 @@ type ItemDraft = {
   cost: string;
   sale: string;
   amountsManual: boolean; // 금액을 직접 고쳤으면 단가표로 덮지 않음
+  saleManual: boolean; // 판매가를 직접 고쳤으면 '공급가 ÷ 0.7' 자동 판매가로 덮지 않음
   excluded: boolean;
   excludedTouched: boolean;
 };
@@ -126,6 +127,7 @@ export function ViralOrderForm({
   canSetDerived = false,
   prices = [],
   meId,
+  canViewCost = false,
 }: {
   action: Action;
   clients: ClientOption[];
@@ -137,6 +139,7 @@ export function ViralOrderForm({
   canSetDerived?: boolean;
   prices?: PriceRow[];
   meId?: string;
+  canViewCost?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, { error: "" });
   const [clientId, setClientId] = useState(initial.client_id ?? "");
@@ -158,12 +161,13 @@ export function ViralOrderForm({
     cost: i.cost_amount ? won(i.cost_amount) : "",
     sale: won(i.sale_amount ?? 0),
     amountsManual: true,
+    saleManual: true,
     excluded: !!i.incentive_excluded,
     excludedTouched: true,
   });
   const blank = (): ItemDraft => ({
     key: newKey(), type: "", platform: "네이버", productName: "", days: "", customDays: false, qty: "", description: "", descTouched: false,
-    start_date: "", end_date: "", cost: "", sale: "", amountsManual: false, excluded: false, excludedTouched: false,
+    start_date: "", end_date: "", cost: "", sale: "", amountsManual: false, saleManual: false, excluded: false, excludedTouched: false,
   });
   const [items, setItems] = useState<ItemDraft[]>(initial.items?.length ? initial.items.map(toDraft) : [blank()]);
 
@@ -175,13 +179,14 @@ export function ViralOrderForm({
     if (!x.descTouched && x.type)
       next.description = describeItem({ product_type: x.type, product_name: x.productName, days: days || null, quantity: Number(x.qty) || null, start_date: x.start_date || null, end_date: next.end_date || null });
     if (!x.excludedTouched) next.excluded = x.type === "가구매 제품비" || /제품비/.test(next.description);
-    if (!x.amountsManual && x.type && pid) {
-      const price = findPrice(prices, { partnerId: pid, productType: x.type, platform: x.platform, productName: x.productName, days: days || null });
-      if (price && Number(x.qty) > 0) {
-        const a = lineAmounts(price, Number(x.qty));
-        next.cost = won(a.cost);
-        next.sale = won(a.sale);
-      }
+    const price = x.type && pid ? findPrice(prices, { partnerId: pid, productType: x.type, platform: x.platform, productName: x.productName, days: days || null }) : null;
+    if (!x.amountsManual && price && Number(x.qty) > 0) {
+      const a = lineAmounts(price, Number(x.qty));
+      if (a.cost != null) next.cost = won(a.cost);
+      next.sale = won(a.sale);
+    } else if (!price && canViewCost && !x.saleManual && digits(next.cost) > 0) {
+      // 단가표에 없는 상품: 판매가 = 공급가 ÷ 0.7 (100원 미만 버림)
+      next.sale = won(defaultSale(digits(next.cost)));
     }
     return next;
   };
@@ -202,7 +207,7 @@ export function ViralOrderForm({
       description: i.description.trim() || null,
       start_date: i.start_date || null,
       end_date: i.end_date || null,
-      cost_amount: digits(i.cost),
+      ...(canViewCost ? { cost_amount: digits(i.cost) } : {}),
       sale_amount: digits(i.sale),
       incentive_excluded: i.excluded,
       product_type: i.type || null,
@@ -384,13 +389,15 @@ export function ViralOrderForm({
                   </div>
                   <input value={it.description} onChange={(e) => setItem(it.key, { description: e.target.value, descTouched: true })} placeholder={`상품 ${n} 내용 (종류·일수·수량을 고르면 자동으로 채워짐)`} className="field" aria-label={`상품 ${n} 내용`} />
                   <div className="grid grid-cols-1 items-center gap-2 sm:grid-cols-2 md:grid-cols-[1fr_1fr_auto_auto]">
-                    <label className="flex items-center gap-2 text-xs text-ink-soft">
-                      <span className="w-14 shrink-0">공급가<br />VAT포함</span>
-                      <input inputMode="numeric" value={it.cost} onChange={(e) => setItem(it.key, { cost: e.target.value ? won(digits(e.target.value)) : "", amountsManual: true })} placeholder="0" className="field text-right tabular-nums" aria-label={`상품 ${n} 공급가`} />
-                    </label>
+                    {canViewCost ? (
+                      <label className="flex items-center gap-2 text-xs text-ink-soft">
+                        <span className="w-14 shrink-0">공급가<br />VAT포함</span>
+                        <input inputMode="numeric" value={it.cost} onChange={(e) => setItem(it.key, { cost: e.target.value ? won(digits(e.target.value)) : "", amountsManual: true })} placeholder="0" className="field text-right tabular-nums" aria-label={`상품 ${n} 공급가`} />
+                      </label>
+                    ) : <span className="text-xs text-ink-soft">공급가는 단가표로 자동 입력</span>}
                     <label className="flex items-center gap-2 text-xs text-ink-soft">
                       <span className="w-14 shrink-0">판매가<br />VAT별도</span>
-                      <input inputMode="numeric" value={it.sale} onChange={(e) => setItem(it.key, { sale: e.target.value ? won(digits(e.target.value)) : "", amountsManual: true })} placeholder="0" className="field text-right tabular-nums" aria-label={`상품 ${n} 판매가`} />
+                      <input inputMode="numeric" value={it.sale} onChange={(e) => setItem(it.key, { sale: e.target.value ? won(digits(e.target.value)) : "", amountsManual: true, saleManual: true })} placeholder="0" className="field text-right tabular-nums" aria-label={`상품 ${n} 판매가`} />
                     </label>
                     <label className="flex items-center gap-1 whitespace-nowrap text-xs text-ink-soft" title="제품비 같은 실비는 인센티브에서 뺍니다">
                       <input type="checkbox" checked={it.excluded} onChange={(e) => setItem(it.key, { excluded: e.target.checked, excludedTouched: true })} aria-label={`상품 ${n} 인센티브 제외`} />
@@ -408,13 +415,13 @@ export function ViralOrderForm({
                     )}
                     {price ? (
                       <>
-                        단가표: 1{price.unit_label}당 공급가 {won(price.cost_price)} / 판매가 {won(price.sale_price)}
+                        단가표: 1{price.unit_label}당 {price.cost_price != null && <>공급가 {won(price.cost_price)} / </>}판매가 {won(price.sale_price)}
                         {it.amountsManual && !readOnly && (
                           <button type="button" className="ml-2 text-brand underline" onClick={() => setItem(it.key, { amountsManual: false })}>단가표 금액으로 다시 계산</button>
                         )}
                       </>
                     ) : it.type && partnerId ? (
-                      "단가표에 없는 조합 · 금액을 직접 입력하세요"
+                      canViewCost ? "단가표에 없는 상품 · 공급가를 넣으면 판매가 = 공급가 ÷ 0.7 (100원 미만 버림)" : "단가표에 없는 상품 · 판매가를 직접 입력하세요"
                     ) : null}
                   </p>
                 </div>
@@ -426,13 +433,17 @@ export function ViralOrderForm({
             )}
           </div>
           <div className="md:col-span-2 flex flex-wrap items-center justify-end gap-x-4 gap-y-1 text-sm">
-            <span className="mr-auto text-xs text-ink-soft">상품 {items.length}줄 · 공급가 합계 {won(totalCost)}원 (VAT 별도 {won(costNet)}원)</span>
+            <span className="mr-auto text-xs text-ink-soft">상품 {items.length}줄{canViewCost && <> · 공급가 합계 {won(totalCost)}원 (VAT 별도 {won(costNet)}원)</>}</span>
             <span className="text-ink-soft">판매가 합계</span>
             <span className="font-bold tabular-nums">{won(totalSale)}원</span>
             <span className="text-xs text-ink-soft">(VAT 포함 {won(Math.round(totalSale * 1.1))}원)</span>
-            <span className="text-ink-soft">마진</span>
-            <span className={`text-lg font-bold tabular-nums ${margin < 0 ? "text-danger" : ""}`}>{won(margin)}원</span>
-            {totalSale > 0 && <span className="text-xs text-ink-soft">({Math.round((margin / totalSale) * 100)}%)</span>}
+            {canViewCost && (
+              <>
+                <span className="text-ink-soft">마진</span>
+                <span className={`text-lg font-bold tabular-nums ${margin < 0 ? "text-danger" : ""}`}>{won(margin)}원</span>
+                {totalSale > 0 && <span className="text-xs text-ink-soft">({Math.round((margin / totalSale) * 100)}%)</span>}
+              </>
+            )}
             {excludedSale !== 0 && <span className="w-full text-right text-xs text-[var(--warn-ink)]">인센티브 제외 {won(excludedSale)}원 → 인센티브 반영 판매가 {won(totalSale - excludedSale)}원</span>}
           </div>
           <div className="md:col-span-2">
@@ -457,11 +468,11 @@ export type StatusValues = {
   invoice_status: string;
   invoice_issued_at: string | null;
   partner_paid: boolean;
-  partner_paid_amount: number | null;
-  partner_invoice_amount: number | null;
+  partner_paid_amount?: number | null;
+  partner_invoice_amount?: number | null;
 };
 
-export function ViralStatusForm({ action, initial, readOnly }: { action: Action; initial: StatusValues; readOnly: boolean }) {
+export function ViralStatusForm({ action, initial, readOnly, canViewCost = false }: { action: Action; initial: StatusValues; readOnly: boolean; canViewCost?: boolean }) {
   const [state, formAction, pending] = useActionState(action, { error: "" });
   const [invoice, setInvoice] = useState(initial.invoice_status);
   return (
@@ -489,10 +500,10 @@ export function ViralStatusForm({ action, initial, readOnly }: { action: Action;
           <label className="flex items-center gap-2 font-semibold">
             <input type="checkbox" name="partner_paid" defaultChecked={initial.partner_paid} /> 협력사 결제 완료
           </label>
-          <div className="mt-2 grid grid-cols-2 gap-2">
+          {canViewCost && <div className="mt-2 grid grid-cols-2 gap-2">
             <input name="partner_paid_amount" inputMode="numeric" placeholder="협력사에 보낸 금액" defaultValue={initial.partner_paid_amount ?? ""} className="field text-right" aria-label="협력사에 보낸 금액" />
             <input name="partner_invoice_amount" inputMode="numeric" placeholder="협력사 계산서 금액" defaultValue={initial.partner_invoice_amount ?? ""} className="field text-right" aria-label="협력사 세금계산서 금액" />
-          </div>
+          </div>}
         </div>
       </fieldset>
       <Message state={state} />

@@ -39,7 +39,11 @@ export type Staff = {
   name: string;
   email: string;
   role: "ceo" | "lead" | "staff";
+  can_view_cost: boolean;
 };
+
+// 바이럴 공급가·마진을 볼 수 있나: 대표·팀장 또는 '공급가 보기'를 켠 직원
+export const canViewCost = (me: Staff | null) => !!me && (me.role !== "staff" || me.can_view_cost);
 
 export const ROLE_LABEL: Record<Staff["role"], string> = {
   ceo: "대표",
@@ -56,7 +60,7 @@ export async function getMe() {
   if (!user) return { supabase, user: null, me: null };
   const { data: me } = await supabase
     .from("staff")
-    .select("id,name,email,role")
+    .select("id,name,email,role,can_view_cost")
     .eq("auth_user_id", user.id)
     .eq("is_active", true)
     .maybeSingle<Staff>();

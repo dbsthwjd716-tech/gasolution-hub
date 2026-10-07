@@ -34,11 +34,13 @@ export async function loadActiveStaff(supabase: SupabaseClient) {
 
 // 협력사 단가표 (입력 화면 자동 계산용)
 export async function loadPrices(supabase: SupabaseClient): Promise<PriceRow[]> {
-  const { data } = await supabase
-    .from("viral_price_list")
-    .select("id,partner_id,product_type,platform,product_name,days,unit_label,cost_price,sale_price")
-    .eq("is_active", true);
-  return (data ?? []).map((p) => ({ ...p, cost_price: Number(p.cost_price), sale_price: Number(p.sale_price) }));
+  const [{ data }, { data: costs }] = await Promise.all([
+    supabase.from("viral_price_list").select("id,partner_id,product_type,platform,product_name,days,unit_label,sale_price").eq("is_active", true),
+    // 공급가는 권한 있는 사람에게만 (권한 없으면 빈 결과)
+    supabase.rpc("viral_price_costs"),
+  ]);
+  const cost = new Map(((costs ?? []) as { id: string; cost_price: number }[]).map((c) => [c.id, Number(c.cost_price)]));
+  return (data ?? []).map((p) => ({ ...p, cost_price: cost.get(p.id) ?? null, sale_price: Number(p.sale_price) }));
 }
 
 export async function loadPartners(supabase: SupabaseClient) {

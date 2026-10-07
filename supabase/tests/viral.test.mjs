@@ -5,6 +5,8 @@ export async function run() {
   const { db, as, expectOk, expectBlocked, finish } = await setup();
 
   const pid = (await db.query(`select id from viral_partners where name='제이솔'`)).rows[0].id;
+  // 김직원은 서진원처럼 '공급가 보기' 권한이 있는 직원으로 시험
+  await db.exec(`update staff set can_view_cost=true where name='김직원'`);
   const c1 = (await as('kim', `insert into clients(company_name,business_number,representative_name,address,billing_emails)
       values ('용접공구','122-01-55229','홍길동','서울 금천구','{tax@weld.kr}') returning id`)).rows[0].id;
   const c2 = (await as('lee', `insert into clients(company_name) values ('다른업체') returning id`)).rows[0].id;
@@ -13,9 +15,10 @@ export async function run() {
   console.log('바이럴 등록');
   const o = await expectOk('김직원이 거래처를 골라 바이럴 건 등록', () =>
     as('kim', `insert into viral_orders(client_id,partner_id,paid_date,description,cost_amount,sale_amount)
-       values ($1,$2,'2026-10-07','블로그리뷰 30건',59400,132000) returning id, staff_id, margin_amount, cost_net_amount`, [c1, pid]));
+       values ($1,$2,'2026-10-07','블로그리뷰 30건',59400,132000) returning id, staff_id`, [c1, pid]));
   const oid = o.rows[0].id;
   await expectOk('마진은 VAT 별도 기준: 판매가 132,000 - 공급가 59,400÷1.1(54,000) = 78,000', async () => {
+    Object.assign(o.rows[0], (await db.query(`select margin_amount, cost_net_amount from viral_orders where id=$1`, [o.rows[0].id])).rows[0]);
     if (Number(o.rows[0].cost_net_amount) !== 54000) throw new Error('공급가(VAT 별도) ' + o.rows[0].cost_net_amount);
     if (Number(o.rows[0].margin_amount) !== 78000) throw new Error('마진 ' + o.rows[0].margin_amount);
   });
@@ -25,7 +28,7 @@ export async function run() {
   });
   await expectOk('목록에서 거래처의 대표자·사업자번호·주소·메일이 자동으로 붙음', async () => {
     const r = await as('lee', `select representative_name, business_number, address, billing_emails, partner_name, staff_name
-                                 from viral_orders_view where id=$1`, [oid]);
+                                 from viral_orders_list where id=$1`, [oid]);
     const x = r.rows[0];
     if (x.representative_name !== '홍길동' || x.business_number !== '1220155229' || x.address !== '서울 금천구'
         || x.billing_emails[0] !== 'tax@weld.kr' || x.partner_name !== '제이솔' || x.staff_name !== '김직원')
@@ -37,7 +40,7 @@ export async function run() {
   });
   await expectOk('거래처 주소를 고치면 바이럴 목록에도 바로 반영', async () => {
     await as('kim', `update clients set address='서울 구로구' where id=$1`, [c1]);
-    const r = await as('kim', `select address from viral_orders_view where id=$1`, [oid]);
+    const r = await as('kim', `select address from viral_orders_list where id=$1`, [oid]);
     if (r.rows[0].address !== '서울 구로구') throw new Error(r.rows[0].address);
   });
   await expectBlocked('다른 거래처의 브랜드를 붙이기', () =>
@@ -46,8 +49,9 @@ export async function run() {
     as('kim', `insert into viral_orders(partner_id,paid_date,sale_amount) values ($1,'2026-10-07',1000)`, [pid]));
   await expectOk('환불·취소는 마이너스 금액으로 등록 가능 (마진도 마이너스)', async () => {
     const r = await as('kim', `insert into viral_orders(client_id,partner_id,paid_date,sale_amount,cost_amount)
-        values ($1,$2,'2026-10-07',-132000,-59400) returning margin_amount`, [c1, pid]);
-    if (Number(r.rows[0].margin_amount) !== -78000) throw new Error(String(r.rows[0].margin_amount));
+        values ($1,$2,'2026-10-07',-132000,-59400) returning id`, [c1, pid]);
+    const m = await db.query(`select margin_amount from viral_orders where id=$1`, [r.rows[0].id]);
+    if (Number(m.rows[0].margin_amount) !== -78000) throw new Error(String(m.rows[0].margin_amount));
   });
   await expectOk('상품 줄 없이 건만 먼저 만들면 판매가 0원으로 시작', async () => {
     const r = await as('kim', `insert into viral_orders(client_id,partner_id,paid_date) values ($1,$2,'2026-10-07') returning sale_amount, item_count`, [c1, pid]);
@@ -55,7 +59,7 @@ export async function run() {
   });
   await expectOk('입금 전 건은 입금일 없이 등록하고, 목록의 기준일은 진행 시작일', async () => {
     const r = await as('kim', `insert into viral_orders(client_id,partner_id,start_date,sale_amount) values ($1,$2,'2026-10-20',100000) returning id`, [c1, pid]);
-    const v = await as('kim', `select paid_date, base_date::text from viral_orders_view where id=$1`, [r.rows[0].id]);
+    const v = await as('kim', `select paid_date, base_date::text from viral_orders_list where id=$1`, [r.rows[0].id]);
     if (v.rows[0].paid_date !== null || v.rows[0].base_date !== '2026-10-20') throw new Error(JSON.stringify(v.rows[0]));
   });
 
@@ -80,7 +84,7 @@ export async function run() {
   });
   await expectBlocked('팀장도 바이럴 건 삭제는 못 함', () => as('lead', `delete from viral_orders where id=$1`, [oid]));
   await expectBlocked('직원이 협력사 추가', () => as('kim', `insert into viral_partners(name) values ('새협력사')`));
-  await expectBlocked('로그인 안 한 사람이 바이럴 목록 조회', () => as(null, `select * from viral_orders_view`));
+  await expectBlocked('로그인 안 한 사람이 바이럴 목록 조회', () => as(null, `select * from viral_orders_list`));
   await expectOk('바이럴 변경도 변경 기록에 남음', async () => {
     const r = await as('lead', `select count(*)::int n from change_log where table_name='viral_orders'`);
     if (r.rows[0].n < 4) throw new Error(String(r.rows[0].n));
@@ -101,7 +105,7 @@ export async function run() {
       ($1,'우상향 30슬롯','2026-10-06','2026-11-04',660000,1320000),
       ($1,'사이렌 4슬롯','2026-10-06','2026-11-04',396000,792000),
       ($1,'사이렌 6슬롯','2026-10-05','2026-11-05',594000,1188000)`, [g]);
-    const r = await as('kim', `select sale_amount, cost_amount, item_count, start_date::text s, end_date::text e, margin_amount, first_item_description
+    const r = await db.query(`select sale_amount, cost_amount, item_count, start_date::text s, end_date::text e, margin_amount, first_item_description
                                  from viral_orders_view where id=$1`, [g]);
     const x = r.rows[0];
     if (Number(x.sale_amount) !== 3300000 || Number(x.cost_amount) !== 1650000 || x.item_count !== 3
@@ -125,7 +129,7 @@ export async function run() {
     as('kim', `update viral_orders set derived_staff_id=(select id from staff where name='김직원') where id=$1`, [g]));
   await expectOk('팀장은 파생 실적자 지정 가능, 목록에 이름 표시', async () => {
     await as('lead', `update viral_orders set derived_staff_id=(select id from staff where name='이직원') where id=$1`, [g]);
-    const r = await as('kim', `select derived_staff_name from viral_orders_view where id=$1`, [g]);
+    const r = await as('kim', `select derived_staff_name from viral_orders_list where id=$1`, [g]);
     if (r.rows[0].derived_staff_name !== '이직원') throw new Error(String(r.rows[0].derived_staff_name));
   });
   await expectOk('직원도 본인 건의 다른 내용은 그대로 수정 가능 (파생 실적자는 유지)', async () => {

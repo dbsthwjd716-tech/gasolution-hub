@@ -13,7 +13,7 @@ export type PriceRow = {
   product_name: string | null;
   days: number | null;
   unit_label: string;
-  cost_price: number;
+  cost_price: number | null; // 공급가 보기 권한이 없으면 null
   sale_price: number;
 };
 
@@ -35,7 +35,7 @@ export function findPrice(list: PriceRow[], q: { partnerId: string; productType:
 
 export function lineAmounts(price: Pick<PriceRow, "cost_price" | "sale_price">, quantity: number) {
   const q = Number(quantity) || 0;
-  return { cost: Math.round(price.cost_price * q), sale: Math.round(price.sale_price * q) };
+  return { cost: price.cost_price == null ? null : Math.round(price.cost_price * q), sale: Math.round(price.sale_price * q) };
 }
 
 // 시작일 + 일수 → 끝나는 날 (시작일 포함: 10/4부터 30일 → 11/2)
@@ -104,3 +104,9 @@ export const CREDIT_ENTRY_LABEL: Record<string, string> = {
   prepaid_received: "미소진 발생 (더 받아 둠)",
   prepaid_used: "미소진 사용",
 };
+
+// 단가표에 없는 상품의 기본 판매가: 공급가(VAT 포함) ÷ 0.7, 100원 미만 버림 (예: 176,000 → 251,400)
+export function defaultSale(cost: number) {
+  if (!cost || cost <= 0) return 0;
+  return Math.floor(cost / 0.7 / 100) * 100;
+}

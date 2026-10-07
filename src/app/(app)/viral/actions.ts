@@ -27,7 +27,7 @@ const money = (f: FormData, k: string) => {
 
 function friendly(message: string) {
   if (message.includes("row-level security")) return "이 건을 수정할 권한이 없습니다. 담당자나 팀장에게 요청해 주세요.";
-  if (message.includes("브랜드")) return message;
+  if (message.includes("브랜드") || message.includes("권한이 있는 사람만")) return message;
   return "저장하지 못했습니다: " + message;
 }
 
@@ -37,7 +37,7 @@ type ItemInput = {
   description: string | null;
   start_date: string | null;
   end_date: string | null;
-  cost_amount: number;
+  cost_amount?: number; // 공급가 보기 권한이 없는 화면에서는 보내지 않음 → 데이터베이스가 단가표로 채움
   sale_amount: number;
   incentive_excluded: boolean;
   product_type: string | null;
@@ -60,7 +60,8 @@ function parseItems(f: FormData): { items: ItemInput[] } | { error: string } {
     const it = r as Partial<ItemInput>;
     const empty = !it.description && !it.sale_amount && !it.cost_amount && !it.product_type;
     if (empty) continue; // 아무것도 안 적은 줄은 무시
-    if (!Number.isFinite(it.sale_amount) || !Number.isFinite(it.cost_amount))
+    const hasCost = it.cost_amount !== undefined;
+    if (!Number.isFinite(it.sale_amount) || (hasCost && !Number.isFinite(it.cost_amount)))
       return { error: `상품 ${idx + 1}줄의 금액을 숫자로 입력해 주세요.` };
     if (it.start_date && it.end_date && it.end_date < it.start_date)
       return { error: `상품 ${idx + 1}줄의 끝나는 날이 시작일보다 빠릅니다.` };
@@ -70,7 +71,7 @@ function parseItems(f: FormData): { items: ItemInput[] } | { error: string } {
       description: it.description ?? null,
       start_date: it.start_date ?? null,
       end_date: it.end_date ?? null,
-      cost_amount: Math.round(it.cost_amount!),
+      ...(hasCost ? { cost_amount: Math.round(it.cost_amount!) } : {}),
       sale_amount: Math.round(it.sale_amount!),
       incentive_excluded: it.incentive_excluded === true,
       product_type: it.product_type && (PRODUCT_TYPES as readonly string[]).includes(it.product_type) ? it.product_type : null,
@@ -162,8 +163,8 @@ export async function updateViralStatus(id: string, _p: FormState, f: FormData):
       invoice_status: invoice,
       invoice_issued_at: invoice === "issued" ? s(f, "invoice_issued_at") : null,
       partner_paid: f.get("partner_paid") === "on",
-      partner_paid_amount: paidAmt,
-      partner_invoice_amount: invAmt,
+      // 협력사 결제 금액 칸은 공급가 보기 권한이 있는 화면에만 있음
+      ...(f.has("partner_paid_amount") ? { partner_paid_amount: paidAmt, partner_invoice_amount: invAmt } : {}),
     })
     .eq("id", id)
     .select("id");

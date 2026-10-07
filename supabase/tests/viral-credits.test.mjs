@@ -4,6 +4,7 @@ import { setup } from './_db.mjs';
 export async function run() {
   const { db, as, expectOk, expectBlocked, finish } = await setup();
   const pid = (await db.query(`select id from viral_partners where name='풀림'`)).rows[0].id;
+  await db.exec(`update staff set can_view_cost=true where name='김직원'`);
   const c1 = (await as('kim', `insert into clients(company_name) values ('용접공구') returning id`)).rows[0].id;
   const c2 = (await as('lee', `insert into clients(company_name) values ('다른업체') returning id`)).rows[0].id;
   const o = (await as('kim', `insert into viral_orders(client_id,partner_id,paid_date) values ($1,$2,'2026-10-02') returning id`, [c1, pid])).rows[0].id;

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { describeItem, endDate, findPrice, lineAmounts, viralRequestText, type PriceRow } from "./viral-products.ts";
+import { defaultSale, describeItem, endDate, findPrice, lineAmounts, viralRequestText, type PriceRow } from "./viral-products.ts";
 
 const P = (o: Partial<PriceRow>): PriceRow => ({ id: Math.random().toString(), partner_id: "풀림", product_type: "슬롯", platform: null, product_name: null, days: null, unit_label: "슬롯", cost_price: 0, sale_price: 0, ...o });
 
@@ -55,4 +55,10 @@ test("발행요청 문구: 설명에 날짜가 없으면 기간을 앞에 붙임
     items: [{ description: "(30일) 메이크 2슬롯", product_type: "슬롯", platform: "네이버", sale_amount: 396000, start_date: "2026-10-04", end_date: "2026-11-02" }],
   });
   assert.match(t, /\n26\.10\.04~26\.11\.02\(30일\) 메이크 2슬롯\n/);
+});
+
+test("단가표에 없는 상품 판매가: 공급가 ÷ 0.7, 100원 미만 버림", () => {
+  assert.equal(defaultSale(176000), 251400);
+  assert.equal(defaultSale(110000), 157100);
+  assert.equal(defaultSale(0), 0);
 });

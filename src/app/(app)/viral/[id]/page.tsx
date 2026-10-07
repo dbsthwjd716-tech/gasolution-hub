@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { formatBizNo } from "@/lib/bizno";
-import { getMe } from "@/lib/supabase/server";
+import { canViewCost, getMe } from "@/lib/supabase/server";
 import { CREDIT_ENTRY_LABEL, viralRequestText } from "@/lib/viral-products";
 import { ConfirmSubmit, CopyButton } from "../../billing/panel";
 import { addViralCredit, createEstimateFromOrder, deleteViralCredit, updateViralOrder, updateViralStatus } from "../actions";
@@ -16,7 +16,7 @@ export default async function ViralDetail(props: PageProps<"/viral/[id]">) {
   const { id } = await props.params;
   const sp = await props.searchParams;
   const { supabase, me } = await getMe();
-  const { data: o } = await supabase.from("viral_orders_view").select("*").eq("id", id).maybeSingle();
+  const { data: o } = await supabase.from("viral_orders_list").select("*").eq("id", id).maybeSingle();
   if (!o) notFound();
 
   const [clients, partners, staff, prices, { data: items }, { data: credits }, { data: balance }] = await Promise.all([
@@ -26,7 +26,7 @@ export default async function ViralDetail(props: PageProps<"/viral/[id]">) {
     loadPrices(supabase),
     supabase
       .from("viral_order_items")
-      .select("id,description,start_date,end_date,cost_amount,sale_amount,incentive_excluded,product_type,platform,product_name,days,quantity,source_sheet,source_row")
+      .select("id,description,start_date,end_date,sale_amount,incentive_excluded,product_type,platform,product_name,days,quantity,source_sheet,source_row")
       .eq("order_id", id)
       .order("sort_order")
       .order("created_at"),
@@ -51,8 +51,21 @@ export default async function ViralDetail(props: PageProps<"/viral/[id]">) {
     });
   }
   const isManager = me?.role === "ceo" || me?.role === "lead";
+  // 공급가·마진·협력사 결제 금액은 권한 있는 사람에게만 (데이터베이스 함수가 다시 확인)
+  const showCost = canViewCost(me);
+  type OrderCost = { cost_amount: number; margin_amount: number; partner_paid_amount: number | null; partner_invoice_amount: number | null };
+  let orderCost: OrderCost | null = null;
+  const itemCost = new Map<string, number>();
+  if (showCost) {
+    const [{ data: oc }, { data: ic }] = await Promise.all([
+      supabase.rpc("viral_order_costs", { ids: [id] }),
+      supabase.rpc("viral_item_costs", { oid: id }),
+    ]);
+    orderCost = ((oc ?? []) as OrderCost[])[0] ?? null;
+    for (const c of (ic ?? []) as { id: string; cost_amount: number }[]) itemCost.set(c.id, Number(c.cost_amount));
+  }
   const canEdit = !!me && (isManager || o.staff_id === me.id);
-  const rows = items ?? [];
+  const rows = (items ?? []).map((i) => ({ ...i, cost_amount: showCost ? (itemCost.get(i.id) ?? 0) : undefined }));
   const mine = (credits ?? []).filter((c) => c.order_id === id);
   const others = (credits ?? []).filter((c) => c.order_id !== id).slice(0, 6);
   const text = viralRequestText({
@@ -84,7 +97,7 @@ export default async function ViralDetail(props: PageProps<"/viral/[id]">) {
           </p>
           <p className="mt-1 text-sm">
             판매가 <b className="tabular-nums">{won(o.sale_amount)}원</b> <span className="text-ink-soft">(VAT 포함 {won(Math.round(o.sale_amount * 1.1))}원)</span>
-            {" · "}공급가 <span className="tabular-nums">{won(o.cost_amount)}원</span>
+            {showCost && orderCost && <>{" · "}공급가 <span className="tabular-nums">{won(orderCost.cost_amount)}원</span> · 마진 <span className="tabular-nums">{won(orderCost.margin_amount)}원</span></>}
             {" · "}<span className={o.payment_received ? "text-[var(--ok-ink)]" : "text-[var(--warn-ink)]"}>{o.payment_received ? "입금 확인" : "입금 전"}</span>
             {" · "}<span className={o.partner_paid ? "text-[var(--ok-ink)]" : "text-[var(--warn-ink)]"}>{o.partner_paid ? "협력사 결제 완료" : "협력사 미결제"}</span>
           </p>
@@ -94,12 +107,12 @@ export default async function ViralDetail(props: PageProps<"/viral/[id]">) {
       <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
         <section className="glass p-5">
           <h2 className="mb-4 font-bold">건 정보</h2>
-          <ViralOrderForm action={updateViralOrder.bind(null, id)} clients={clients} partners={partners} prices={prices} initial={{ ...o, items: rows }} staff={staff} canSetDerived={isManager} meId={me?.id} submitLabel="저장" readOnly={!canEdit} />
+          <ViralOrderForm action={updateViralOrder.bind(null, id)} clients={clients} partners={partners} prices={prices} initial={{ ...o, items: rows }} staff={staff} canSetDerived={isManager} meId={me?.id} canViewCost={showCost} submitLabel="저장" readOnly={!canEdit} />
         </section>
         <div className="space-y-4">
           <section className="glass h-fit p-5">
             <h2 className="mb-4 font-bold">진행 상태</h2>
-            <ViralStatusForm action={updateViralStatus.bind(null, id)} initial={o} readOnly={!canEdit} />
+            <ViralStatusForm action={updateViralStatus.bind(null, id)} initial={{ ...o, ...(orderCost ?? {}) }} readOnly={!canEdit} canViewCost={showCost} />
           </section>
 
           <section className="glass space-y-3 p-5">
