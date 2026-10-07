@@ -19,6 +19,9 @@ type Row = {
   payment_received: boolean;
   invoice_status: "not_issued" | "requested" | "issued" | "not_needed";
   partner_paid: boolean;
+  item_count: number;
+  first_item_description: string | null;
+  derived_staff_name: string | null;
 };
 
 const won = (n: number) => Number(n).toLocaleString("ko-KR");
@@ -50,7 +53,7 @@ export default async function ViralPage(props: PageProps<"/viral">) {
   const { supabase, me } = await getMe();
   let query = supabase
     .from("viral_orders_view")
-    .select("id,paid_date,base_date,company_name,brand_name,is_provisional,description,partner_name,staff_name,staff_id,sale_amount,cost_amount,margin_amount,payment_received,invoice_status,partner_paid")
+    .select("id,paid_date,base_date,company_name,brand_name,is_provisional,description,partner_name,staff_name,staff_id,sale_amount,cost_amount,margin_amount,payment_received,invoice_status,partner_paid,item_count,first_item_description,derived_staff_name")
     .order("base_date", { ascending: false })
     .limit(2000);
   // 미입금·미발행·미결제 목록은 달과 상관없이 밀린 건을 모두 보여줌
@@ -115,7 +118,7 @@ export default async function ViralPage(props: PageProps<"/viral">) {
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {[
-          { label: "건수", value: `${rows.length}건` },
+          { label: "건수", value: `${rows.length}건 (상품 ${rows.reduce((t, r) => t + (r.item_count || 0), 0)}줄)` },
           { label: "판매가 합계 (VAT 별도)", value: `${won(sum("sale_amount"))}원` },
           { label: "공급가 합계 (VAT 포함)", value: `${won(sum("cost_amount"))}원` },
           { label: "마진 합계 (VAT 별도)", value: `${won(sum("margin_amount"))}원` },
@@ -135,7 +138,7 @@ export default async function ViralPage(props: PageProps<"/viral">) {
             <tr className="border-b border-[var(--glass-border)]">
               <th className="px-4 py-3">입금일</th>
               <th className="px-4 py-3">거래처</th>
-              <th className="px-4 py-3">내용</th>
+              <th className="px-4 py-3">상품</th>
               <th className="px-4 py-3">협력사</th>
               <th className="px-4 py-3 text-right">판매가</th>
               <th className="px-4 py-3 text-right">마진</th>
@@ -154,14 +157,20 @@ export default async function ViralPage(props: PageProps<"/viral">) {
                   {r.brand_name && <span className="ml-1 text-xs font-normal text-ink-soft">{r.brand_name}</span>}
                   {r.is_provisional && <span className="chip chip-warn ml-2">사업자번호 없음</span>}
                 </td>
-                <td className="max-w-56 truncate px-4 py-3 text-ink-soft">{r.description ?? "-"}</td>
+                <td className="max-w-64 px-4 py-3 text-ink-soft">
+                  <span className="line-clamp-1">{r.first_item_description ?? r.description ?? "-"}</span>
+                  {r.item_count > 1 && <span className="chip chip-info mt-1">외 {r.item_count - 1}개 · 총 {r.item_count}줄</span>}
+                </td>
                 <td className="px-4 py-3">{r.partner_name}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{won(r.sale_amount)}</td>
                 <td className={`px-4 py-3 text-right tabular-nums ${r.margin_amount < 0 ? "text-danger" : ""}`}>{won(r.margin_amount)}</td>
                 <td className="px-4 py-3">{r.payment_received ? <span className="chip chip-ok">확인</span> : <span className="chip chip-warn">전</span>}</td>
                 <td className="px-4 py-3"><span className={`chip ${INVOICE[r.invoice_status].cls}`}>{INVOICE[r.invoice_status].label}</span></td>
                 <td className="px-4 py-3">{r.partner_paid ? <span className="chip chip-ok">완료</span> : <span className="chip chip-warn">미결제</span>}</td>
-                <td className="px-4 py-3">{r.staff_name ?? "-"}</td>
+                <td className="px-4 py-3">
+                  {r.staff_name ?? "-"}
+                  {r.derived_staff_name && <span className="chip chip-info ml-1" title="파생 실적자">파생 {r.derived_staff_name}</span>}
+                </td>
               </tr>
             ))}
             {!rows.length && !error && (

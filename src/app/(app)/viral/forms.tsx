@@ -19,18 +19,30 @@ export type ClientOption = {
   brands: { id: string; name: string }[];
 };
 
+export type ItemValues = {
+  id?: string;
+  description: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  cost_amount: number;
+  sale_amount: number;
+};
+
 export type OrderValues = {
   client_id?: string;
   brand_id?: string | null;
   partner_id?: string;
   paid_date?: string | null;
-  start_date?: string | null;
-  end_date?: string | null;
-  description?: string | null;
-  cost_amount?: number;
-  sale_amount?: number;
+  derived_staff_id?: string | null;
   memo?: string | null;
+  items?: ItemValues[];
 };
+
+// 화면에서 줄을 구분하는 번호 (저장되지 않음)
+let keySeq = 0;
+const newKey = () => `row-${++keySeq}`;
+
+type ItemDraft = { key: string; id?: string; description: string; start_date: string; end_date: string; cost: string; sale: string };
 
 const won = (n: number) => n.toLocaleString("ko-KR");
 // 한국 시간 기준 오늘 (YYYY-MM-DD)
@@ -83,6 +95,8 @@ export function ViralOrderForm({
   initial = {},
   submitLabel,
   readOnly = false,
+  staff = [],
+  canSetDerived = false,
 }: {
   action: Action;
   clients: ClientOption[];
@@ -90,16 +104,41 @@ export function ViralOrderForm({
   initial?: OrderValues;
   submitLabel: string;
   readOnly?: boolean;
+  staff?: { id: string; name: string }[];
+  canSetDerived?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, { error: "" });
   const [clientId, setClientId] = useState(initial.client_id ?? "");
   const [q, setQ] = useState("");
-  const [cost, setCost] = useState(initial.cost_amount != null ? won(initial.cost_amount) : "");
-  const [sale, setSale] = useState(initial.sale_amount != null ? won(initial.sale_amount) : "");
+  const toDraft = (i: ItemValues): ItemDraft => ({
+    key: i.id ?? newKey(),
+    id: i.id,
+    description: i.description ?? "",
+    start_date: i.start_date ?? "",
+    end_date: i.end_date ?? "",
+    cost: i.cost_amount ? won(i.cost_amount) : "",
+    sale: won(i.sale_amount ?? 0),
+  });
+  const blank = (): ItemDraft => ({ key: newKey(), description: "", start_date: "", end_date: "", cost: "", sale: "" });
+  const [items, setItems] = useState<ItemDraft[]>(initial.items?.length ? initial.items.map(toDraft) : [blank()]);
+  const setItem = (key: string, patch: Partial<ItemDraft>) => setItems((xs) => xs.map((x) => (x.key === key ? { ...x, ...patch } : x)));
   const client = clients.find((c) => c.id === clientId);
   // 판매가는 VAT 별도, 공급가는 VAT 포함 → 공급가에서 VAT를 빼고 비교 (데이터베이스 계산과 같음)
-  const costNet = Math.round(digits(cost) / 1.1);
-  const margin = digits(sale) - costNet;
+  const totalSale = items.reduce((t, i) => t + digits(i.sale), 0);
+  const totalCost = items.reduce((t, i) => t + digits(i.cost), 0);
+  const costNet = items.reduce((t, i) => t + Math.round(digits(i.cost) / 1.1), 0);
+  const margin = totalSale - costNet;
+  const itemsJson = JSON.stringify(
+    items.map((i, idx) => ({
+      id: i.id,
+      sort_order: idx,
+      description: i.description.trim() || null,
+      start_date: i.start_date || null,
+      end_date: i.end_date || null,
+      cost_amount: digits(i.cost),
+      sale_amount: digits(i.sale),
+    })),
+  );
 
   const matches = useMemo(() => {
     const n = norm(q);
@@ -112,6 +151,7 @@ export function ViralOrderForm({
   return (
     <form action={formAction} className="space-y-5">
       <input type="hidden" name="client_id" value={clientId} />
+      <input type="hidden" name="items" value={itemsJson} />
       <fieldset disabled={readOnly} className="space-y-5">
         <div>
           <span className="label">거래처 *</span>
@@ -183,33 +223,57 @@ export function ViralOrderForm({
             <input id="paid_date" name="paid_date" type="date" defaultValue={initial.client_id ? (initial.paid_date ?? "") : todayKST()} className="field" />
             <p className="mt-1 text-xs text-ink-soft">입금 전이면 비워 두세요. 입금되면 날짜를 넣고 상태에서 &lsquo;입금 확인&rsquo;을 체크합니다.</p>
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          {(canSetDerived || initial.derived_staff_id) && (
             <div>
-              <label className="label" htmlFor="start_date">진행 시작</label>
-              <input id="start_date" name="start_date" type="date" defaultValue={initial.start_date ?? ""} className="field" />
+              <label className="label" htmlFor="derived_staff_id">파생 실적자</label>
+              <select id="derived_staff_id" name="derived_staff_id" defaultValue={initial.derived_staff_id ?? ""} disabled={!canSetDerived} className="field">
+                <option value="">없음</option>
+                {staff.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <p className="mt-1 text-xs text-ink-soft">다른 담당의 건에서 파생 실적을 받는 사람 (대표·팀장만 지정)</p>
             </div>
-            <div>
-              <label className="label" htmlFor="end_date">진행 끝</label>
-              <input id="end_date" name="end_date" type="date" defaultValue={initial.end_date ?? ""} className="field" />
-            </div>
-          </div>
+          )}
+
           <div className="md:col-span-2">
-            <label className="label" htmlFor="description">상품 내용</label>
-            <input id="description" name="description" placeholder="예: 블로그리뷰 50건, 플레이스 최적화 30일" defaultValue={initial.description ?? ""} className="field" />
+            <div className="mb-2 flex items-end justify-between">
+              <span className="label mb-0">상품 (슬롯·상품별로 한 줄씩)</span>
+              <span className="text-xs text-ink-soft">공급가는 VAT 포함, 판매가는 VAT 별도 · 환불은 -로 입력</span>
+            </div>
+            <div className="space-y-3">
+              {items.map((it, idx) => (
+                <div key={it.key} className="rounded-xl border border-[var(--glass-border)] bg-white/60 p-3">
+                  <div className="grid gap-2 md:grid-cols-[1fr_140px_140px]">
+                    <input value={it.description} onChange={(e) => setItem(it.key, { description: e.target.value })} placeholder={`상품 ${idx + 1} 내용 (예: 우상향 30슬롯 4스타세트)`} className="field" aria-label={`상품 ${idx + 1} 내용`} />
+                    <input type="date" value={it.start_date} onChange={(e) => setItem(it.key, { start_date: e.target.value })} className="field" aria-label={`상품 ${idx + 1} 시작일`} />
+                    <input type="date" value={it.end_date} onChange={(e) => setItem(it.key, { end_date: e.target.value })} className="field" aria-label={`상품 ${idx + 1} 끝나는 날`} />
+                  </div>
+                  <div className="mt-2 grid grid-cols-[1fr_1fr_auto] items-center gap-2">
+                    <label className="flex items-center gap-2 text-xs text-ink-soft">
+                      <span className="w-14 shrink-0">공급가<br />VAT포함</span>
+                      <input inputMode="numeric" value={it.cost} onChange={(e) => setItem(it.key, { cost: e.target.value ? won(digits(e.target.value)) : "" })} placeholder="0" className="field text-right tabular-nums" aria-label={`상품 ${idx + 1} 공급가`} />
+                    </label>
+                    <label className="flex items-center gap-2 text-xs text-ink-soft">
+                      <span className="w-14 shrink-0">판매가<br />VAT별도</span>
+                      <input inputMode="numeric" value={it.sale} onChange={(e) => setItem(it.key, { sale: e.target.value ? won(digits(e.target.value)) : "" })} placeholder="0" className="field text-right tabular-nums" aria-label={`상품 ${idx + 1} 판매가`} />
+                    </label>
+                    {!readOnly && items.length > 1 ? (
+                      <button type="button" onClick={() => setItems((xs) => xs.filter((x) => x.key !== it.key))} className="px-2 text-sm text-ink-soft hover:text-danger" aria-label={`상품 ${idx + 1} 지우기`}>삭제</button>
+                    ) : <span />}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {!readOnly && (
+              <button type="button" onClick={() => setItems((xs) => [...xs, blank()])} className="btn btn-ghost mt-3">+ 상품 줄 추가</button>
+            )}
           </div>
-          <div>
-            <label className="label" htmlFor="cost_amount">공급가 (협력사 견적, VAT 포함)</label>
-            <input id="cost_amount" name="cost_amount" inputMode="numeric" value={cost} onChange={(e) => setCost(e.target.value ? won(digits(e.target.value)) : "")} className="field text-right tabular-nums" />
-          </div>
-          <div>
-            <label className="label" htmlFor="sale_amount">판매가 (고객 안내 금액, VAT 별도) *</label>
-            <input id="sale_amount" name="sale_amount" inputMode="numeric" required value={sale} onChange={(e) => setSale(e.target.value ? won(digits(e.target.value)) : "")} className="field text-right tabular-nums" />
-          </div>
-          <div className="md:col-span-2 flex flex-wrap items-center justify-end gap-2 text-sm">
-            {digits(cost) > 0 && <span className="mr-auto text-xs text-ink-soft">공급가 VAT 별도 {won(costNet)}원</span>}
-            <span className="text-ink-soft">마진 (VAT 별도)</span>
+          <div className="md:col-span-2 flex flex-wrap items-center justify-end gap-x-4 gap-y-1 text-sm">
+            <span className="mr-auto text-xs text-ink-soft">상품 {items.length}줄 · 공급가 합계 {won(totalCost)}원 (VAT 별도 {won(costNet)}원)</span>
+            <span className="text-ink-soft">판매가 합계</span>
+            <span className="font-bold tabular-nums">{won(totalSale)}원</span>
+            <span className="text-ink-soft">마진</span>
             <span className={`text-lg font-bold tabular-nums ${margin < 0 ? "text-danger" : ""}`}>{won(margin)}원</span>
-            {digits(sale) > 0 && <span className="text-xs text-ink-soft">({Math.round((margin / digits(sale)) * 100)}%)</span>}
+            {totalSale > 0 && <span className="text-xs text-ink-soft">({Math.round((margin / totalSale) * 100)}%)</span>}
           </div>
           <div className="md:col-span-2">
             <label className="label" htmlFor="memo">메모</label>

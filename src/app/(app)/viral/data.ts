@@ -25,6 +25,12 @@ export async function loadClientOptions(supabase: SupabaseClient): Promise<Clien
   }));
 }
 
+// 파생 실적자로 고를 수 있는 재직 직원
+export async function loadActiveStaff(supabase: SupabaseClient) {
+  const { data } = await supabase.from("staff").select("id,name").eq("is_active", true).order("name");
+  return data ?? [];
+}
+
 export async function loadPartners(supabase: SupabaseClient) {
   const { data } = await supabase.from("viral_partners").select("id,name").eq("is_active", true).order("name");
   return data ?? [];

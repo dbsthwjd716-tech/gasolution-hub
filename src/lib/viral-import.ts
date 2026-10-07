@@ -398,3 +398,57 @@ export function planViralImport(
     },
   };
 }
+
+// ------------------------------------------------------------------ 묶음 만들기
+// 같은 협력사 탭·같은 거래처·같은 입금일·같은 담당(파생 여부 포함)인 줄들을 바이럴 1건으로 묶는다.
+// 입금 전(입금일 없음) 줄은 묶지 않고 줄마다 1건.
+
+export type PlannedGroup = {
+  key: string; // 다시 옮겨도 같은 건으로 덮어쓰기 위한 고유 키
+  tab: string;
+  clientKey: string;
+  paidDate: string | null;
+  manager: string;
+  derived: boolean; // 담당 표기에 "파생"이 있음
+  managerLabels: string[];
+  paymentReceived: boolean;
+  paymentNotes: string[];
+  invoiceIssued: boolean;
+  partnerPaid: boolean;
+  partnerPaidAmount: number | null;
+  partnerInvoiceAmount: number | null;
+  saleNotes: string[];
+  items: PlannedOrder[];
+};
+
+const sumOrNull = (xs: (number | null)[]) => (xs.some((x) => x !== null) ? xs.reduce<number>((s, x) => s + (x ?? 0), 0) : null);
+const uniq = (xs: (string | null)[]) => [...new Set(xs.filter((x): x is string => !!x))];
+
+export function groupOrders(orders: PlannedOrder[]): PlannedGroup[] {
+  const map = new Map<string, PlannedOrder[]>();
+  for (const o of orders) {
+    const derived = /파생/.test(o.managerLabel ?? "");
+    const key = ["sheet", o.tab, o.clientKey, o.paidDate ?? `unpaid-row${o.row}`, o.manager, derived ? "derived" : ""].join("|");
+    map.set(key, [...(map.get(key) ?? []), o]);
+  }
+  return [...map.entries()].map(([key, items]) => {
+    const f = items[0];
+    return {
+      key,
+      tab: f.tab,
+      clientKey: f.clientKey,
+      paidDate: f.paidDate,
+      manager: f.manager,
+      derived: /파생/.test(f.managerLabel ?? ""),
+      managerLabels: uniq(items.map((i) => i.managerLabel)),
+      paymentReceived: items.every((i) => i.paymentReceived),
+      paymentNotes: uniq(items.map((i) => i.paymentNote)),
+      invoiceIssued: items.every((i) => i.invoiceIssued),
+      partnerPaid: items.every((i) => i.partnerPaid),
+      partnerPaidAmount: sumOrNull(items.map((i) => i.partnerPaidAmount)),
+      partnerInvoiceAmount: sumOrNull(items.map((i) => i.partnerInvoiceAmount)),
+      saleNotes: uniq(items.map((i) => i.saleNote)),
+      items,
+    };
+  });
+}

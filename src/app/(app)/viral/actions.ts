@@ -2,7 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { normalizeName, type ImportPlan } from "@/lib/viral-import";
+import { groupOrders, normalizeName, type ImportPlan } from "@/lib/viral-import";
+
+// 시트에 "(파생)"으로 적힌 건의 파생 실적자
+const DERIVED_STAFF_NAME = "서진원";
 import { loadSheetPlan } from "./data";
 import { createClient, getMe } from "@/lib/supabase/server";
 
@@ -26,33 +29,64 @@ function friendly(message: string) {
   return "저장하지 못했습니다: " + message;
 }
 
+type ItemInput = {
+  id?: string;
+  sort_order: number;
+  description: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  cost_amount: number;
+  sale_amount: number;
+};
+
+function parseItems(f: FormData): { items: ItemInput[] } | { error: string } {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(String(f.get("items") ?? "[]"));
+  } catch {
+    return { error: "상품 줄을 읽지 못했습니다. 새로고침 후 다시 시도해 주세요." };
+  }
+  if (!Array.isArray(raw)) return { error: "상품 줄을 읽지 못했습니다." };
+  const items: ItemInput[] = [];
+  for (const [idx, r] of raw.entries()) {
+    const it = r as Partial<ItemInput>;
+    const empty = !it.description && !it.sale_amount && !it.cost_amount;
+    if (empty) continue; // 아무것도 안 적은 줄은 무시
+    if (!Number.isFinite(it.sale_amount) || !Number.isFinite(it.cost_amount))
+      return { error: `상품 ${idx + 1}줄의 금액을 숫자로 입력해 주세요.` };
+    if (it.start_date && it.end_date && it.end_date < it.start_date)
+      return { error: `상품 ${idx + 1}줄의 끝나는 날이 시작일보다 빠릅니다.` };
+    items.push({
+      id: typeof it.id === "string" ? it.id : undefined,
+      sort_order: idx,
+      description: it.description ?? null,
+      start_date: it.start_date ?? null,
+      end_date: it.end_date ?? null,
+      cost_amount: Math.round(it.cost_amount!),
+      sale_amount: Math.round(it.sale_amount!),
+    });
+  }
+  if (!items.length) return { error: "상품을 한 줄 이상 입력해 주세요." };
+  return { items };
+}
+
 function orderFields(f: FormData) {
   const client_id = s(f, "client_id");
   const partner_id = s(f, "partner_id");
-  const paid_date = s(f, "paid_date");
-  const sale = money(f, "sale_amount");
-  const cost = money(f, "cost_amount");
   if (!client_id) return { error: "거래처를 골라 주세요." } as const;
   if (!partner_id) return { error: "협력사를 골라 주세요." } as const;
-  if (sale === null || Number.isNaN(sale)) return { error: "판매가를 숫자로 입력해 주세요." } as const;
-  if (Number.isNaN(cost)) return { error: "공급가를 숫자로 입력해 주세요." } as const;
-  const start = s(f, "start_date");
-  const end = s(f, "end_date");
-  if (start && end && end < start) return { error: "끝나는 날이 시작일보다 빠릅니다." } as const;
-  return {
-    row: {
-      client_id,
-      brand_id: s(f, "brand_id"),
-      partner_id,
-      paid_date,
-      start_date: start,
-      end_date: end,
-      description: s(f, "description"),
-      sale_amount: sale,
-      cost_amount: cost ?? 0,
-      memo: s(f, "memo"),
-    },
-  } as const;
+  const parsed = parseItems(f);
+  if ("error" in parsed) return { error: parsed.error } as const;
+  const row: Record<string, unknown> = {
+    client_id,
+    brand_id: s(f, "brand_id"),
+    partner_id,
+    paid_date: s(f, "paid_date"),
+    memo: s(f, "memo"),
+  };
+  // 파생 실적자 칸은 대표·팀장 화면에만 있음. 칸이 없으면 기존 값 유지
+  if (f.has("derived_staff_id")) row.derived_staff_id = s(f, "derived_staff_id");
+  return { row, items: parsed.items } as const;
 }
 
 export async function createViralOrder(_p: FormState, f: FormData): Promise<FormState> {
@@ -61,6 +95,10 @@ export async function createViralOrder(_p: FormState, f: FormData): Promise<Form
   const supabase = await createClient();
   const { data, error } = await supabase.from("viral_orders").insert(parsed.row).select("id").single();
   if (error) return { error: friendly(error.message) };
+  const { error: itemErr } = await supabase
+    .from("viral_order_items")
+    .insert(parsed.items.map((i) => ({ ...i, id: undefined, order_id: data.id })));
+  if (itemErr) return { error: friendly(itemErr.message) };
   revalidatePath("/viral");
   redirect(`/viral/${data.id}`);
 }
@@ -72,6 +110,22 @@ export async function updateViralOrder(id: string, _p: FormState, f: FormData): 
   const { data, error } = await supabase.from("viral_orders").update(parsed.row).eq("id", id).select("id");
   if (error) return { error: friendly(error.message) };
   if (!data?.length) return { error: "이 건을 수정할 권한이 없습니다. 담당자나 팀장에게 요청해 주세요." };
+
+  // 상품 줄 맞추기: 화면에서 지운 줄은 삭제, 있던 줄은 수정, 새 줄은 추가
+  const { data: current } = await supabase.from("viral_order_items").select("id").eq("order_id", id);
+  const keep = new Set(parsed.items.map((i) => i.id).filter(Boolean));
+  const removed = (current ?? []).map((r) => r.id).filter((x) => !keep.has(x));
+  if (removed.length) {
+    const { error: delErr } = await supabase.from("viral_order_items").delete().in("id", removed);
+    if (delErr) return { error: friendly(delErr.message) };
+  }
+  for (const it of parsed.items) {
+    const { id: itemId, ...fields } = it;
+    const res = itemId
+      ? await supabase.from("viral_order_items").update(fields).eq("id", itemId).eq("order_id", id)
+      : await supabase.from("viral_order_items").insert({ ...fields, order_id: id });
+    if (res.error) return { error: friendly(res.error.message) };
+  }
   revalidatePath(`/viral/${id}`);
   revalidatePath("/viral");
   return { error: "", ok: "저장했습니다." };
@@ -109,7 +163,7 @@ export async function updateViralStatus(id: string, _p: FormState, f: FormData):
 
 export type ImportResult = {
   error: string;
-  done?: { clientsCreated: number; clientsMatched: number; ordersSaved: number; unknownManagers: string[] };
+  done?: { clientsCreated: number; clientsMatched: number; ordersSaved: number; itemsSaved: number; unknownManagers: string[] };
 };
 
 export async function runViralImport(): Promise<ImportResult> {
@@ -194,53 +248,74 @@ export async function runViralImport(): Promise<ImportResult> {
     }
   }
 
-  // 2) 바이럴 건 저장 (시트 탭+줄 기준으로 덮어써서 여러 번 실행해도 중복 없음)
+  // 2) 바이럴 건 저장: 같은 업체·입금일·협력사·담당 줄을 1건으로 묶고, 줄은 상품 줄로 저장
+  //    (건은 묶음 키, 상품 줄은 시트 탭+행 기준으로 덮어써서 여러 번 실행해도 중복 없음)
+  const groups = groupOrders(plan.orders);
   const unknownManagers = new Set<string>();
-  const rows = plan.orders.map((o) => {
-    const sid = staffId.get(o.manager) ?? null;
-    if (!sid) unknownManagers.add(o.manager);
+  const derivedStaffId = staffId.get(DERIVED_STAFF_NAME) ?? null;
+  const orderRows = groups.map((g) => {
+    const sid = staffId.get(g.manager) ?? null;
+    if (!sid) unknownManagers.add(g.manager);
+    const memo = [
+      !sid ? `시트 담당자: ${g.managerLabels[0] ?? g.manager} (직원 목록에 없음)` : g.managerLabels.length ? `시트 담당자 표기: ${g.managerLabels.join(", ")}` : null,
+      ...g.saleNotes.map((n) => `시트 판매가 칸: ${n}`),
+    ]
+      .filter(Boolean)
+      .join(" / ");
     return {
-      client_id: clientIdForKey.get(o.clientKey)!,
-      partner_id: partnerId.get(o.tab)!,
+      import_key: g.key,
+      client_id: clientIdForKey.get(g.clientKey)!,
+      partner_id: partnerId.get(g.tab)!,
       staff_id: sid,
-      paid_date: o.paidDate,
-      start_date: o.startDate,
-      end_date: o.endDate,
-      description: o.description,
-      sale_amount: o.saleAmount,
-      cost_amount: o.costAmount,
-      payment_received: o.paymentReceived,
-      payment_note: o.paymentNote,
-      invoice_status: o.invoiceIssued ? "issued" : "not_issued",
-      partner_paid: o.partnerPaid,
-      partner_paid_amount: o.partnerPaidAmount,
-      partner_invoice_amount: o.partnerInvoiceAmount,
-      memo:
-        [
-          !sid ? `시트 담당자: ${o.managerLabel ?? o.manager} (직원 목록에 없음)` : o.managerLabel ? `시트 담당자 표기: ${o.managerLabel}` : null,
-          o.saleNote ? `시트 판매가 칸: ${o.saleNote}` : null,
-        ]
-          .filter(Boolean)
-          .join(" / ") || null,
-      source_sheet: o.tab,
-      source_row: o.row,
+      derived_staff_id: g.derived ? derivedStaffId : null,
+      paid_date: g.paidDate,
+      payment_received: g.paymentReceived,
+      payment_note: g.paymentNotes.join(" / ") || null,
+      invoice_status: g.invoiceIssued ? "issued" : "not_issued",
+      partner_paid: g.partnerPaid,
+      partner_paid_amount: g.partnerPaidAmount,
+      partner_invoice_amount: g.partnerInvoiceAmount,
+      memo: memo || null,
+      source_sheet: g.tab,
     };
   });
+
+  const orderIdForKey = new Map<string, string>();
+  for (let i = 0; i < orderRows.length; i += 200) {
+    const chunk = orderRows.slice(i, i + 200);
+    const { data, error } = await supabase.from("viral_orders").upsert(chunk, { onConflict: "import_key" }).select("id,import_key");
+    if (error) return { error: `바이럴 건 저장 중 문제가 생겼습니다(${i + 1}번째 묶음부터): ${error.message}` };
+    for (const r of data ?? []) orderIdForKey.set(r.import_key, r.id);
+  }
+
+  const itemRows = groups.flatMap((g) =>
+    g.items.map((o, idx) => ({
+      order_id: orderIdForKey.get(g.key)!,
+      sort_order: idx,
+      description: o.description,
+      start_date: o.startDate,
+      end_date: o.endDate,
+      sale_amount: o.saleAmount,
+      cost_amount: o.costAmount,
+      source_sheet: o.tab,
+      source_row: o.row,
+    })),
+  );
   let saved = 0;
-  for (let i = 0; i < rows.length; i += 200) {
-    const chunk = rows.slice(i, i + 200);
-    const { error } = await supabase.from("viral_orders").upsert(chunk, { onConflict: "source_sheet,source_row" });
+  for (let i = 0; i < itemRows.length; i += 200) {
+    const chunk = itemRows.slice(i, i + 200);
+    const { error } = await supabase.from("viral_order_items").upsert(chunk, { onConflict: "source_sheet,source_row" });
     if (error) {
-      // 묶음이 거절되면 한 건씩 다시 넣어서, 어느 시트 몇 행이 문제인지 찾아 알려줌
+      // 묶음이 거절되면 한 줄씩 다시 넣어서, 어느 시트 몇 행이 문제인지 찾아 알려줌
       const failed: string[] = [];
       for (const r of chunk) {
-        const one = await supabase.from("viral_orders").upsert(r, { onConflict: "source_sheet,source_row" });
+        const one = await supabase.from("viral_order_items").upsert(r, { onConflict: "source_sheet,source_row" });
         if (one.error) failed.push(`${r.source_sheet} ${r.source_row}행 (${one.error.message})`);
         else saved++;
       }
       if (failed.length)
         return {
-          error: `${saved}건은 저장했고, ${failed.length}건은 저장하지 못했습니다: ${failed.slice(0, 5).join(" / ")}${failed.length > 5 ? " …" : ""}`,
+          error: `${saved}줄은 저장했고, ${failed.length}줄은 저장하지 못했습니다: ${failed.slice(0, 5).join(" / ")}${failed.length > 5 ? " …" : ""}`,
         };
       continue;
     }
@@ -251,6 +326,6 @@ export async function runViralImport(): Promise<ImportResult> {
   revalidatePath("/clients");
   return {
     error: "",
-    done: { clientsCreated: created, clientsMatched: matched, ordersSaved: saved, unknownManagers: [...unknownManagers] },
+    done: { clientsCreated: created, clientsMatched: matched, ordersSaved: orderIdForKey.size, itemsSaved: saved, unknownManagers: [...unknownManagers] },
   };
 }

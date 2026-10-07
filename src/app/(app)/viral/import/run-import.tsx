@@ -11,7 +11,7 @@ export function RunImport() {
       {state.done ? (
         <div className="space-y-2 text-sm">
           <p className="font-bold text-[var(--ok-ink)]">옮기기를 마쳤습니다.</p>
-          <p>바이럴 {state.done.ordersSaved}건 저장 · 거래처 새로 만듦 {state.done.clientsCreated}곳 · 기존 거래처에 연결 {state.done.clientsMatched}곳</p>
+          <p>바이럴 {state.done.ordersSaved}건(상품 {state.done.itemsSaved}줄) 저장 · 거래처 새로 만듦 {state.done.clientsCreated}곳 · 기존 거래처에 연결 {state.done.clientsMatched}곳</p>
           {state.done.unknownManagers.length > 0 && (
             <p className="text-[var(--warn-ink)]">
               직원 목록에 없는 담당자 이름: {state.done.unknownManagers.join(", ")} — 해당 건은 담당 미지정으로 두고 메모에 이름을 남겼습니다.

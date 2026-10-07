@@ -168,3 +168,36 @@ test("판매가 칸에 숫자 없이 설명만 있으면 0원 서비스 건으�
   const q = planViralImport({ 포에스: [row({ sale: "약 10만" })] }, { managers: ["서진원"] });
   assert.equal(q.orders.length, 0);
 });
+
+test("같은 업체·입금일·협력사·담당 줄은 1건으로 묶고, 입금 전 줄은 따로", async () => {
+  const { groupOrders } = await import("./viral-import.ts");
+  const p = planViralImport(
+    {
+      풀림: [
+        row({ company: "프라임스포츠", date: "2026. 10. 03", desc: "26.10.06~26.11.04 우상향 30슬롯", sale: "1,320,000", paid: "입금", inv: "O" }),
+        row({ company: "프라임스포츠", date: "2026. 10. 03", desc: "26.10.06~26.11.04 사이렌 4슬롯", sale: "792,000", paid: "입금", inv: "" }),
+        row({ company: "프라임스포츠", date: "2026. 09. 07", desc: "쿠팡베스트 24슬롯", sale: "1,584,000" }),
+        row({ company: "프라임스포츠", date: "", desc: "예약", sale: "100" }),
+        row({ company: "프라임스포츠", date: "", desc: "예약2", sale: "200" }),
+      ],
+    },
+    { managers: ["서진원"] },
+  );
+  const g = groupOrders(p.orders);
+  assert.equal(g.length, 4);
+  const oct = g.find((x) => x.paidDate === "2026-10-03")!;
+  assert.equal(oct.items.length, 2);
+  assert.equal(oct.paymentReceived, true);
+  assert.equal(oct.invoiceIssued, false); // 줄 하나라도 미발행이면 건은 미발행
+});
+
+test("파생 표기는 같은 날 같은 담당이어도 별도 건으로 묶음", async () => {
+  const { groupOrders } = await import("./viral-import.ts");
+  const p = planViralImport(
+    { 제이솔: [row({ mgr: "남지윤" }), row({ mgr: "남지윤(파생)" })] },
+    { managers: ["서진원", "남지윤"] },
+  );
+  const g = groupOrders(p.orders);
+  assert.equal(g.length, 2);
+  assert.deepEqual(g.map((x) => x.derived).sort(), [false, true]);
+});
