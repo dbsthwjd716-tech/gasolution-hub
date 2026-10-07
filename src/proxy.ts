@@ -36,7 +36,7 @@ export async function proxy(request: NextRequest) {
   }
   if (user && isLogin) {
     const to = request.nextUrl.clone();
-    to.pathname = "/clients";
+    to.pathname = "/home";
     to.search = "";
     return NextResponse.redirect(to);
   }
