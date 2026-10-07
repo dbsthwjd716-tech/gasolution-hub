@@ -11,6 +11,8 @@ const NAV = [
   { href: "/contracts", label: "계약" },
   { href: "/billing", label: "정산 · 견적" },
 ];
+// 대표·팀장에게만 보이는 메뉴
+const MANAGER_NAV = [{ href: "/payroll", label: "급여 · 인센티브" }];
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const { user, me } = await getMe();
@@ -24,7 +26,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <p className="whitespace-nowrap font-bold">통합 시스템</p>
         </div>
         <nav className="-mx-1 flex min-w-0 flex-1 gap-1 overflow-x-auto px-1 md:mx-0 md:flex-none md:flex-col md:overflow-visible md:px-0">
-          {NAV.map((n) => (
+          {[...NAV, ...(me && me.role !== "staff" ? MANAGER_NAV : [])].map((n) => (
             <Link key={n.href} href={n.href} className="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold hover:bg-brand-soft">
               {n.label}
             </Link>
