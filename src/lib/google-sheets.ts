@@ -1,5 +1,6 @@
 import "server-only";
 import { createSign } from "node:crypto";
+import { readServiceAccount } from "./google-key";
 
 // 구글 서비스 계정으로 시트 읽기 (읽기 전용 권한). 기존 대시보드와 같은 환경변수를 씀
 //   GOOGLE_SHEETS_CLIENT_EMAIL, GOOGLE_SHEETS_PRIVATE_KEY, VIRAL_GOOGLE_SHEET_ID
@@ -8,9 +9,7 @@ const b64url = (b: Buffer | string) =>
   Buffer.from(b).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 
 async function accessToken(): Promise<string> {
-  const email = process.env.GOOGLE_SHEETS_CLIENT_EMAIL;
-  const key = process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, "\n");
-  if (!email || !key) throw new Error("구글 시트 연결 정보(GOOGLE_SHEETS_CLIENT_EMAIL / PRIVATE_KEY)가 없습니다.");
+  const { clientEmail: email, privateKey: key } = readServiceAccount(process.env);
   const now = Math.floor(Date.now() / 1000);
   const unsigned = `${b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }))}.${b64url(
     JSON.stringify({
@@ -31,7 +30,10 @@ async function accessToken(): Promise<string> {
     cache: "no-store",
   });
   const data = await res.json();
-  if (!res.ok || !data.access_token) throw new Error("구글 인증에 실패했습니다.");
+  if (!res.ok || !data.access_token)
+    throw new Error(
+      `구글 인증에 실패했습니다 (${data.error_description ?? data.error ?? res.status}). 서비스 계정 이메일과 키가 같은 키 파일에서 나온 값인지 확인해 주세요.`,
+    );
   return data.access_token as string;
 }
 
