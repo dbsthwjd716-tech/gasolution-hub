@@ -185,8 +185,8 @@ export function ViralOrderForm({
       if (a.cost != null) next.cost = won(a.cost);
       next.sale = won(a.sale);
     } else if (!price && canViewCost && !x.saleManual && digits(next.cost) > 0) {
-      // 단가표에 없는 상품: 판매가 = 공급가 ÷ 0.7 (100원 미만 버림)
-      next.sale = won(defaultSale(digits(next.cost)));
+      // 단가표에 없는 상품: 고객 판매가(VAT 포함) = 공급가 ÷ 0.7 (100원 미만 버림) → 저장은 VAT 별도
+      next.sale = won(Math.round(defaultSale(digits(next.cost)) / 1.1));
     }
     return next;
   };
@@ -388,13 +388,24 @@ export function ViralOrderForm({
                     <input type="date" value={it.end_date} onChange={(e) => setItem(it.key, { end_date: e.target.value })} className="field" aria-label={`상품 ${n} 끝나는 날`} />
                   </div>
                   <input value={it.description} onChange={(e) => setItem(it.key, { description: e.target.value, descTouched: true })} placeholder={`상품 ${n} 내용 (종류·일수·수량을 고르면 자동으로 채워짐)`} className="field" aria-label={`상품 ${n} 내용`} />
-                  <div className="grid grid-cols-1 items-center gap-2 sm:grid-cols-2 md:grid-cols-[1fr_1fr_auto_auto]">
+                  <div className="grid grid-cols-1 items-center gap-2 sm:grid-cols-2 md:grid-cols-[1fr_1fr_1fr_auto_auto]">
                     {canViewCost ? (
                       <label className="flex items-center gap-2 text-xs text-ink-soft">
                         <span className="w-14 shrink-0">공급가<br />VAT포함</span>
                         <input inputMode="numeric" value={it.cost} onChange={(e) => setItem(it.key, { cost: e.target.value ? won(digits(e.target.value)) : "", amountsManual: true })} placeholder="0" className="field text-right tabular-nums" aria-label={`상품 ${n} 공급가`} />
                       </label>
                     ) : <span className="text-xs text-ink-soft">공급가는 단가표로 자동 입력</span>}
+                    <label className="flex items-center gap-2 text-xs text-ink-soft">
+                      <span className="w-14 shrink-0">판매가<br />VAT포함</span>
+                      <input
+                        inputMode="numeric"
+                        value={it.sale ? won(Math.round(digits(it.sale) * 1.1)) : ""}
+                        onChange={(e) => setItem(it.key, { sale: e.target.value ? won(Math.round(digits(e.target.value) / 1.1)) : "", amountsManual: true, saleManual: true })}
+                        placeholder="0"
+                        className="field text-right tabular-nums"
+                        aria-label={`상품 ${n} 판매가 VAT 포함`}
+                      />
+                    </label>
                     <label className="flex items-center gap-2 text-xs text-ink-soft">
                       <span className="w-14 shrink-0">판매가<br />VAT별도</span>
                       <input inputMode="numeric" value={it.sale} onChange={(e) => setItem(it.key, { sale: e.target.value ? won(digits(e.target.value)) : "", amountsManual: true, saleManual: true })} placeholder="0" className="field text-right tabular-nums" aria-label={`상품 ${n} 판매가`} />
@@ -421,7 +432,7 @@ export function ViralOrderForm({
                         )}
                       </>
                     ) : it.type && partnerId ? (
-                      canViewCost ? "단가표에 없는 상품 · 공급가를 넣으면 판매가 = 공급가 ÷ 0.7 (100원 미만 버림)" : "단가표에 없는 상품 · 판매가를 직접 입력하세요"
+                      canViewCost ? "단가표에 없는 상품 · 공급가를 넣으면 판매가(VAT 포함) = 공급가 ÷ 0.7 (100원 미만 버림)" : "단가표에 없는 상품 · 판매가를 직접 입력하세요 (VAT 포함·별도 중 편한 칸에)"
                     ) : null}
                   </p>
                 </div>

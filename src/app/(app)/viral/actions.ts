@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { groupOrders, normalizeName, type ImportPlan } from "@/lib/viral-import";
-import { PRODUCT_TYPES } from "@/lib/viral-products";
+import { PRODUCT_TYPES, sheetSaleToNet } from "@/lib/viral-products";
 import { calcEstimateLine } from "@/lib/billing-calc";
 
 // 시트에 "(파생)"으로 적힌 건의 파생 실적자
@@ -311,7 +311,7 @@ export async function runViralImport(): Promise<ImportResult> {
       description: o.description,
       start_date: o.startDate,
       end_date: o.endDate,
-      sale_amount: o.saleAmount,
+      sale_amount: sheetSaleToNet(o.costAmount, o.saleAmount),
       cost_amount: o.costAmount,
       source_sheet: o.tab,
       source_row: o.row,

@@ -110,3 +110,9 @@ export function defaultSale(cost: number) {
   if (!cost || cost <= 0) return 0;
   return Math.floor(cost / 0.7 / 100) * 100;
 }
+
+// 시트의 판매가가 '공급가 ÷ 0.7' 규칙으로 정한 금액이면 VAT 포함 가격 → VAT 별도로 바꿔 저장
+export function sheetSaleToNet(cost: number, sale: number) {
+  if (cost > 0 && sale === defaultSale(cost)) return Math.round(sale / 1.1);
+  return sale;
+}

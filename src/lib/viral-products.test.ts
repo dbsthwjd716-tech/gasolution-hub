@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { defaultSale, describeItem, endDate, findPrice, lineAmounts, viralRequestText, type PriceRow } from "./viral-products.ts";
+import { defaultSale, describeItem, sheetSaleToNet, endDate, findPrice, lineAmounts, viralRequestText, type PriceRow } from "./viral-products.ts";
 
 const P = (o: Partial<PriceRow>): PriceRow => ({ id: Math.random().toString(), partner_id: "풀림", product_type: "슬롯", platform: null, product_name: null, days: null, unit_label: "슬롯", cost_price: 0, sale_price: 0, ...o });
 
@@ -61,4 +61,9 @@ test("단가표에 없는 상품 판매가: 공급가 ÷ 0.7, 100원 미만 버�
   assert.equal(defaultSale(176000), 251400);
   assert.equal(defaultSale(110000), 157100);
   assert.equal(defaultSale(0), 0);
+});
+
+test("시트 판매가가 0.7 규칙 금액이면 VAT 포함으로 보고 VAT 별도로 변환", () => {
+  assert.equal(sheetSaleToNet(176000, 251400), 228545);
+  assert.equal(sheetSaleToNet(145200, 396000), 396000);
 });
