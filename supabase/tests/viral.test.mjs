@@ -133,5 +133,18 @@ export async function run() {
     if (!r.rows[0]?.derived_staff_id) throw new Error('파생 실적자가 지워짐');
   });
 
+  console.log('인센티브 제외 줄');
+  await expectOk('제품비 줄은 자동으로 인센티브 제외, 판매가 합계에는 그대로 포함', async () => {
+    const o = (await as('kim', `insert into viral_orders(client_id,partner_id,paid_date) values ($1,$2,'2026-09-08') returning id`, [c1, pid])).rows[0].id;
+    await as('kim', `insert into viral_order_items(order_id,description,sale_amount) values ($1,'가구매 100건',770000),($1,'가구매 100건 제품비',18491000)`, [o]);
+    const r = await db.query(`select description, incentive_excluded from viral_order_items where order_id=$1 order by sale_amount`, [o]);
+    if (r.rows[0].incentive_excluded || !r.rows[1].incentive_excluded) throw new Error(JSON.stringify(r.rows));
+    const t = await db.query(`select sale_amount from viral_orders where id=$1`, [o]);
+    if (Number(t.rows[0].sale_amount) !== 19261000) throw new Error(String(t.rows[0].sale_amount));
+    await as('kim', `update viral_order_items set incentive_excluded=false where order_id=$1 and description like '%제품비%'`, [o]);
+    const u = await db.query(`select count(*)::int n from viral_order_items where order_id=$1 and incentive_excluded`, [o]);
+    if (u.rows[0].n !== 0) throw new Error('수정 안 됨');
+  });
+
   return finish();
 }

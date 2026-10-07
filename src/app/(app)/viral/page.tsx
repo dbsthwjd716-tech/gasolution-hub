@@ -67,6 +67,12 @@ export default async function ViralPage(props: PageProps<"/viral">) {
   if (mine && me) query = query.eq("staff_id", me.id);
   const { data, error } = await query.returns<Row[]>();
   const rows = data ?? [];
+  // 인센티브에서 빼는 줄(제품비 등)의 판매가를 건별로 모음
+  const { data: ex } = await supabase.from("viral_order_items").select("order_id,sale_amount").eq("incentive_excluded", true);
+  const shown = new Set(rows.map((r) => r.id));
+  const excluded = new Map<string, number>();
+  for (const e of ex ?? []) if (shown.has(e.order_id)) excluded.set(e.order_id, (excluded.get(e.order_id) ?? 0) + Number(e.sale_amount));
+  const excludedTotal = [...excluded.values()].reduce((a, b) => a + b, 0);
 
   const sum = (k: "sale_amount" | "cost_amount" | "margin_amount") => rows.reduce((s, r) => s + Number(r[k]), 0);
   const tabs = [
@@ -119,13 +125,14 @@ export default async function ViralPage(props: PageProps<"/viral">) {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {[
           { label: "건수", value: `${rows.length}건 (상품 ${rows.reduce((t, r) => t + (r.item_count || 0), 0)}줄)` },
-          { label: "판매가 합계 (VAT 별도)", value: `${won(sum("sale_amount"))}원` },
+          { label: "판매가 합계 (VAT 별도)", value: `${won(sum("sale_amount"))}원`, note: excludedTotal ? `인센티브 반영 ${won(sum("sale_amount") - excludedTotal)}원 (제품비 등 ${won(excludedTotal)}원 제외)` : "" },
           { label: "공급가 합계 (VAT 포함)", value: `${won(sum("cost_amount"))}원` },
           { label: "마진 합계 (VAT 별도)", value: `${won(sum("margin_amount"))}원` },
         ].map((k) => (
           <div key={k.label} className="glass p-4">
             <p className="text-xs text-ink-soft">{k.label}</p>
             <p className="mt-1 text-lg font-bold tabular-nums">{k.value}</p>
+            {"note" in k && k.note && <p className="mt-1 text-xs text-ink-soft">{k.note}</p>}
           </div>
         ))}
       </div>
@@ -162,7 +169,10 @@ export default async function ViralPage(props: PageProps<"/viral">) {
                   {r.item_count > 1 && <span className="chip chip-info mt-1">외 {r.item_count - 1}개 · 총 {r.item_count}줄</span>}
                 </td>
                 <td className="px-4 py-3">{r.partner_name}</td>
-                <td className="px-4 py-3 text-right tabular-nums">{won(r.sale_amount)}</td>
+                <td className="px-4 py-3 text-right tabular-nums">
+                  {won(r.sale_amount)}
+                  {excluded.get(r.id) ? <div className="text-xs text-[var(--warn-ink)]" title="인센티브에서 빼는 금액">제외 {won(excluded.get(r.id)!)}</div> : null}
+                </td>
                 <td className={`px-4 py-3 text-right tabular-nums ${r.margin_amount < 0 ? "text-danger" : ""}`}>{won(r.margin_amount)}</td>
                 <td className="px-4 py-3">{r.payment_received ? <span className="chip chip-ok">확인</span> : <span className="chip chip-warn">전</span>}</td>
                 <td className="px-4 py-3"><span className={`chip ${INVOICE[r.invoice_status].cls}`}>{INVOICE[r.invoice_status].label}</span></td>

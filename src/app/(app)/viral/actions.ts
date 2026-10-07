@@ -37,6 +37,7 @@ type ItemInput = {
   end_date: string | null;
   cost_amount: number;
   sale_amount: number;
+  incentive_excluded: boolean;
 };
 
 function parseItems(f: FormData): { items: ItemInput[] } | { error: string } {
@@ -64,6 +65,7 @@ function parseItems(f: FormData): { items: ItemInput[] } | { error: string } {
       end_date: it.end_date ?? null,
       cost_amount: Math.round(it.cost_amount!),
       sale_amount: Math.round(it.sale_amount!),
+      incentive_excluded: it.incentive_excluded === true,
     });
   }
   if (!items.length) return { error: "상품을 한 줄 이상 입력해 주세요." };

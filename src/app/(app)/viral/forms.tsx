@@ -26,6 +26,7 @@ export type ItemValues = {
   end_date: string | null;
   cost_amount: number;
   sale_amount: number;
+  incentive_excluded?: boolean;
 };
 
 export type OrderValues = {
@@ -42,7 +43,7 @@ export type OrderValues = {
 let keySeq = 0;
 const newKey = () => `row-${++keySeq}`;
 
-type ItemDraft = { key: string; id?: string; description: string; start_date: string; end_date: string; cost: string; sale: string };
+type ItemDraft = { key: string; id?: string; description: string; start_date: string; end_date: string; cost: string; sale: string; excluded: boolean; excludedTouched: boolean };
 
 const won = (n: number) => n.toLocaleString("ko-KR");
 // 한국 시간 기준 오늘 (YYYY-MM-DD)
@@ -118,8 +119,10 @@ export function ViralOrderForm({
     end_date: i.end_date ?? "",
     cost: i.cost_amount ? won(i.cost_amount) : "",
     sale: won(i.sale_amount ?? 0),
+    excluded: !!i.incentive_excluded,
+    excludedTouched: true,
   });
-  const blank = (): ItemDraft => ({ key: newKey(), description: "", start_date: "", end_date: "", cost: "", sale: "" });
+  const blank = (): ItemDraft => ({ key: newKey(), description: "", start_date: "", end_date: "", cost: "", sale: "", excluded: false, excludedTouched: false });
   const [items, setItems] = useState<ItemDraft[]>(initial.items?.length ? initial.items.map(toDraft) : [blank()]);
   const setItem = (key: string, patch: Partial<ItemDraft>) => setItems((xs) => xs.map((x) => (x.key === key ? { ...x, ...patch } : x)));
   const client = clients.find((c) => c.id === clientId);
@@ -128,6 +131,7 @@ export function ViralOrderForm({
   const totalCost = items.reduce((t, i) => t + digits(i.cost), 0);
   const costNet = items.reduce((t, i) => t + Math.round(digits(i.cost) / 1.1), 0);
   const margin = totalSale - costNet;
+  const excludedSale = items.filter((i) => i.excluded).reduce((t, i) => t + digits(i.sale), 0);
   const itemsJson = JSON.stringify(
     items.map((i, idx) => ({
       id: i.id,
@@ -137,6 +141,7 @@ export function ViralOrderForm({
       end_date: i.end_date || null,
       cost_amount: digits(i.cost),
       sale_amount: digits(i.sale),
+      incentive_excluded: i.excluded,
     })),
   );
 
@@ -243,11 +248,11 @@ export function ViralOrderForm({
               {items.map((it, idx) => (
                 <div key={it.key} className="rounded-xl border border-[var(--glass-border)] bg-white/60 p-3">
                   <div className="grid gap-2 md:grid-cols-[1fr_140px_140px]">
-                    <input value={it.description} onChange={(e) => setItem(it.key, { description: e.target.value })} placeholder={`상품 ${idx + 1} 내용 (예: 우상향 30슬롯 4스타세트)`} className="field" aria-label={`상품 ${idx + 1} 내용`} />
+                    <input value={it.description} onChange={(e) => setItem(it.key, it.excludedTouched ? { description: e.target.value } : { description: e.target.value, excluded: /제품비/.test(e.target.value) })} placeholder={`상품 ${idx + 1} 내용 (예: 우상향 30슬롯 4스타세트)`} className="field" aria-label={`상품 ${idx + 1} 내용`} />
                     <input type="date" value={it.start_date} onChange={(e) => setItem(it.key, { start_date: e.target.value })} className="field" aria-label={`상품 ${idx + 1} 시작일`} />
                     <input type="date" value={it.end_date} onChange={(e) => setItem(it.key, { end_date: e.target.value })} className="field" aria-label={`상품 ${idx + 1} 끝나는 날`} />
                   </div>
-                  <div className="mt-2 grid grid-cols-[1fr_1fr_auto] items-center gap-2">
+                  <div className="mt-2 grid grid-cols-1 items-center gap-2 sm:grid-cols-2 md:grid-cols-[1fr_1fr_auto_auto]">
                     <label className="flex items-center gap-2 text-xs text-ink-soft">
                       <span className="w-14 shrink-0">공급가<br />VAT포함</span>
                       <input inputMode="numeric" value={it.cost} onChange={(e) => setItem(it.key, { cost: e.target.value ? won(digits(e.target.value)) : "" })} placeholder="0" className="field text-right tabular-nums" aria-label={`상품 ${idx + 1} 공급가`} />
@@ -255,6 +260,10 @@ export function ViralOrderForm({
                     <label className="flex items-center gap-2 text-xs text-ink-soft">
                       <span className="w-14 shrink-0">판매가<br />VAT별도</span>
                       <input inputMode="numeric" value={it.sale} onChange={(e) => setItem(it.key, { sale: e.target.value ? won(digits(e.target.value)) : "" })} placeholder="0" className="field text-right tabular-nums" aria-label={`상품 ${idx + 1} 판매가`} />
+                    </label>
+                    <label className="flex items-center gap-1 whitespace-nowrap text-xs text-ink-soft" title="제품비 같은 실비는 인센티브에서 뺍니다">
+                      <input type="checkbox" checked={it.excluded} onChange={(e) => setItem(it.key, { excluded: e.target.checked, excludedTouched: true })} aria-label={`상품 ${idx + 1} 인센티브 제외`} />
+                      인센티브 제외
                     </label>
                     {!readOnly && items.length > 1 ? (
                       <button type="button" onClick={() => setItems((xs) => xs.filter((x) => x.key !== it.key))} className="px-2 text-sm text-ink-soft hover:text-danger" aria-label={`상품 ${idx + 1} 지우기`}>삭제</button>
@@ -274,6 +283,7 @@ export function ViralOrderForm({
             <span className="text-ink-soft">마진</span>
             <span className={`text-lg font-bold tabular-nums ${margin < 0 ? "text-danger" : ""}`}>{won(margin)}원</span>
             {totalSale > 0 && <span className="text-xs text-ink-soft">({Math.round((margin / totalSale) * 100)}%)</span>}
+            {excludedSale !== 0 && <span className="w-full text-right text-xs text-[var(--warn-ink)]">인센티브 제외 {won(excludedSale)}원 → 인센티브 반영 판매가 {won(totalSale - excludedSale)}원</span>}
           </div>
           <div className="md:col-span-2">
             <label className="label" htmlFor="memo">메모</label>

@@ -17,7 +17,7 @@ export default async function ViralDetail(props: PageProps<"/viral/[id]">) {
     loadActiveStaff(supabase),
     supabase
       .from("viral_order_items")
-      .select("id,description,start_date,end_date,cost_amount,sale_amount,source_sheet,source_row")
+      .select("id,description,start_date,end_date,cost_amount,sale_amount,incentive_excluded,source_sheet,source_row")
       .eq("order_id", id)
       .order("sort_order")
       .order("created_at"),
