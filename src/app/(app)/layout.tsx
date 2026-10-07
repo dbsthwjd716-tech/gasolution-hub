@@ -4,7 +4,10 @@ import { getMe, ROLE_LABEL } from "@/lib/supabase/server";
 import { signOut } from "../login/actions";
 
 // 앞으로 단계별로 메뉴가 늘어남: 바이럴(2단계), 정산·계약(3), 인입 CRM(4), 광고 운영(5), 보고서(6)
-const NAV = [{ href: "/clients", label: "거래처" }];
+const NAV = [
+  { href: "/clients", label: "거래처" },
+  { href: "/viral", label: "바이럴" },
+];
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const { user, me } = await getMe();
