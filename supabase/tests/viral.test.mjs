@@ -88,5 +88,13 @@ export async function run() {
     return db.query(`insert into viral_orders(client_id,partner_id,paid_date,sale_amount,source_sheet,source_row) values ($1,$2,'2025-11-05',1,'제이솔',2)`, [c1, pid]);
   });
 
+  console.log('시트 옮기기 담당자');
+  await expectOk('시트에서 옮긴 건은 담당자를 못 찾으면 비워 둠 (옮긴 사람으로 채우지 않음)', async () => {
+    const r = await as('lead', `insert into viral_orders(client_id,partner_id,paid_date,sale_amount,source_sheet,source_row) values ($1,$2,'2026-01-01',1,'풀림',999) returning staff_id`, [c1, pid]);
+    if (r.rows[0].staff_id !== null) throw new Error('담당자가 채워짐');
+  });
+  await expectOk('퇴사 직원은 이메일 없이 등록 가능', () => as('ceo', `insert into staff(name,role,is_active) values ('퇴사자','staff',false)`));
+  await expectBlocked('재직 직원은 이메일이 꼭 있어야 함', () => as('ceo', `insert into staff(name,role,is_active) values ('재직자','staff',true)`));
+
   return finish();
 }

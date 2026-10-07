@@ -61,7 +61,7 @@ test("칸이 한 칸 밀린 탭도 날짜 위치로 맞춰 읽음 (애드매니�
 
 test("필수 칸이 빠진 줄은 건너뛰고 이유를 남김, 빈 줄은 무시", () => {
   const p = planViralImport({
-    포에스: [row({ date: "" }), row({ company: "" }), row({ sale: "미정" }), row({ mgr: "" }), Array(17).fill("")],
+    포에스: [row({ date: "날짜확인중" }), row({ company: "" }), row({ sale: "미정" }), row({ mgr: "" }), Array(17).fill("")],
   });
   assert.equal(p.orders.length, 0);
   assert.deepEqual(p.skipped.map((s) => s.kind), ["missing_date", "missing_company", "missing_amount", "missing_manager"]);
@@ -124,4 +124,37 @@ test("기간 칸에서 시작일·끝나는 날 읽기", () => {
   assert.deepEqual(parsePeriod("25.11.05~25.11.14(10일)"), { start: "2025-11-05", end: "2025-11-14" });
   assert.deepEqual(parsePeriod("2025. 11. 21~ 플레이스 최적화"), { start: "2025-11-21", end: null });
   assert.deepEqual(parsePeriod("블로그리뷰50건"), { start: null, end: null });
+});
+
+test("애드매니저처럼 날짜 뒤에 칸이 하나 더 있는 줄도 담당자·판매가 위치에 맞춰 읽음", () => {
+  const r = row({ company: "똑똑홀딩스", desc: "네이버플레이스 순위보장 25일", sale: "3,614,200", cost: "2,750,000", date: "2026. 06. 05" });
+  const shifted = [r[0], r[1], "6/15", ...r.slice(2)]; // 날짜(B) 뒤에 칸 하나 추가
+  const p = planViralImport({ 애드매니저: [shifted] }, { managers: ["서진원"] });
+  assert.equal(p.orders.length, 1);
+  const o = p.orders[0];
+  assert.equal(p.clients[0].companyName, "똑똑홀딩스");
+  assert.equal(o.saleAmount, 3614200);
+  assert.equal(o.costAmount, 2750000);
+  assert.equal(o.manager, "서진원");
+  assert.equal(o.description, "6/15 네이버플레이스 순위보장 25일");
+  assert.ok(p.warnings.some((w) => w.kind === "column_shift"));
+});
+
+test("정상 줄은 배치를 바꾸지 않음 (주소 칸이 비어 있어도)", () => {
+  const p = planViralImport({ 제이솔: [row({ addr: "" }), row({ addr: "서울", mail: "" })] }, { managers: ["서진원"] });
+  assert.ok(!p.warnings.some((w) => w.kind === "column_shift"));
+  assert.equal(p.orders[0].saleAmount, 132000);
+});
+
+test("입금날짜 칸이 비어 있으면 입금 전 건으로 옮김", () => {
+  const p = planViralImport({ 제이솔: [row({ date: "" })] }, { managers: ["서진원"] });
+  assert.equal(p.orders.length, 1);
+  assert.equal(p.orders[0].paidDate, null);
+  assert.ok(p.warnings.some((w) => w.kind === "unpaid"));
+});
+
+test("퇴사 직원 '남지윤(파생)' 표기는 남지윤으로 연결하고 원래 표기는 따로 남김", () => {
+  const p = planViralImport({ 제이솔: [row({ mgr: "남지윤(파생)" })] }, { managers: ["서진원", "남지윤"] });
+  assert.equal(p.orders[0].manager, "남지윤");
+  assert.equal(p.orders[0].managerLabel, "남지윤(파생)");
 });

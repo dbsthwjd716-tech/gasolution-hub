@@ -39,6 +39,7 @@ export type PlannedOrder = {
   saleAmount: number;
   costAmount: number;
   manager: string;
+  managerLabel: string | null; // 시트에 적힌 담당자 표기가 이름과 다를 때 (예: "남지윤(파생)")
   paymentReceived: boolean;
   paymentNote: string | null;
   invoiceIssued: boolean;
@@ -156,6 +157,7 @@ type RawRow = {
   cost: number | null;
   sale: number | null;
   manager: string | null;
+  managerRaw: string | null;
   paymentNote: string | null;
   invoiceIssued: boolean;
   partnerPaid: boolean;
@@ -163,26 +165,57 @@ type RawRow = {
   partnerInvoiceAmount: number | null;
 };
 
+// 한 줄을 읽는 방법(칸 배치)을 몇 가지로 시도해 보고, 담당자·사업자번호·메일·금액이 가장 그럴듯하게
+// 제자리에 오는 배치를 고른다. 탭마다 날짜 앞이나 뒤에 칸이 하나 더 있는 경우가 있어서.
+//   dateCol: 날짜 칸 위치 (원래 B=1)
+//   bodyShift: 날짜 다음부터 칸이 몇 칸 밀렸는지 (애드매니저처럼 날짜 뒤에 칸이 하나 더 있으면 1)
+function layoutScore(cells: unknown[], dateCol: number, bodyShift: number, managers: string[]) {
+  const at = (k: number) => cells[dateCol + k + (k >= 1 ? bodyShift : 0)];
+  let score = 0;
+  const date = at(0);
+  if (parseDate(date)) score += 2;
+  else if (!text(date) || isUnpaidMarker(date)) score += 1;
+  const mgr = text(at(10));
+  if (mgr && managers.some((m) => mgr.includes(m))) score += 4;
+  else if (mgr && /^[가-힣]{2,4}(\(.+\))?$/.test(mgr)) score += 2; // 사람 이름 모양
+  if (mgr && parseAmount(mgr) !== null) score -= 3; // 담당자 자리에 금액이 오면 잘못된 배치
+  const bn = normalizeBizNo(text(at(4)));
+  if (bn && isValidBizNo(bn)) score += 2;
+  if (splitEmails(at(6)).length) score += 1;
+  if (parseAmount(at(9)) !== null) score += 1;
+  if (text(at(2)) && parseAmount(at(2)) === null) score += 0.5; // 업체명은 숫자가 아님
+  return score;
+}
+
 function readRow(tab: string, row: number, cells: unknown[], managers: string[]): RawRow | null {
   if (!cells.some((c) => text(c))) return null; // 빈 줄
 
-  // 날짜는 원래 B(1). 밀린 탭은 A(0)나 C(2)에 있을 수 있음
-  let dateCol = 1;
-  if (!parseDate(cells[1])) {
-    if (parseDate(cells[2])) dateCol = 2;
-    else if (parseDate(cells[0])) dateCol = 0;
+  // 기본 배치(날짜 B, 밀림 없음)를 먼저 두고, 다른 배치가 확실히 더 나을 때만 바꿈
+  const candidates: [number, number][] = [[1, 0], [2, 0], [0, 0], [1, 1], [1, -1]];
+  let best = candidates[0];
+  let bestScore = layoutScore(cells, 1, 0, managers);
+  for (const [d, b] of candidates.slice(1)) {
+    const sc = layoutScore(cells, d, b, managers);
+    if (sc > bestScore + 0.5) {
+      best = [d, b];
+      bestScore = sc;
+    }
   }
-  const at = (offset: number) => cells[dateCol + offset];
-  const paymentRaw = text(at(11));
+  const [dateCol, bodyShift] = best;
+  const at = (k: number) => cells[dateCol + k + (k >= 1 ? bodyShift : 0)];
+  const dateCell = at(0);
+  // 날짜 뒤에 칸이 하나 더 있던 경우, 그 칸(예: "6/15") 내용은 기간·내용 앞에 붙여 둠
+  const extra = bodyShift > 0 ? text(cells[dateCol + 1]) : null;
+  const desc = [extra, text(at(1))].filter(Boolean).join(" ") || null;
 
   return {
     tab,
     row,
-    shifted: dateCol - 1,
-    paidDate: parseDate(at(0)),
-    unpaid: !parseDate(at(0)) && isUnpaidMarker(at(0)),
+    shifted: dateCol - 1 + bodyShift,
+    paidDate: parseDate(dateCell),
+    unpaid: !parseDate(dateCell) && (!text(dateCell) || isUnpaidMarker(dateCell)),
     saleRaw: text(at(9)),
-    description: text(at(1)),
+    description: desc,
     company: text(at(2)),
     representative: text(at(3)),
     bizRaw: text(at(4)),
@@ -192,7 +225,8 @@ function readRow(tab: string, row: number, cells: unknown[], managers: string[])
     cost: parseAmount(at(8)),
     sale: parseAmount(at(9)),
     manager: normalizeManager(at(10), managers),
-    paymentNote: paymentRaw,
+    managerRaw: text(at(10)),
+    paymentNote: text(at(11)),
     invoiceIssued: yes(at(12)),
     partnerPaid: yes(at(13)),
     partnerPaidAmount: parseAmount(at(14)),
@@ -222,7 +256,7 @@ export function planViralImport(
       if (!r.company) return skip("missing_company", "업체명이 없습니다");
       if (r.sale === null && r.saleRaw) return skip("missing_amount", `판매가 '${r.saleRaw}'를 숫자로 읽을 수 없습니다`);
       if (!r.manager) return skip("missing_manager", "담당자가 없습니다");
-      if (r.unpaid) warnings.push({ tab, row: r.row, kind: "unpaid", message: "입금 전 건으로 옮깁니다 (입금일 비움)" });
+      if (r.unpaid) warnings.push({ tab, row: r.row, kind: "unpaid", message: "입금날짜가 비어 있거나 '입금전'이라 입금 전 건으로 옮깁니다" });
       if (r.sale === null) {
         r.sale = 0;
         warnings.push({ tab, row: r.row, kind: "no_sale_amount", message: "판매가가 비어 있어 0원으로 옮깁니다 (서비스 건)" });
@@ -230,7 +264,7 @@ export function planViralImport(
       if (r.sale < 0 || (r.cost ?? 0) < 0)
         warnings.push({ tab, row: r.row, kind: "negative_amount", message: "마이너스 금액입니다 (환불·취소 건으로 보임). 그대로 옮깁니다" });
       if (r.shifted !== 0)
-        warnings.push({ tab, row: r.row, kind: "column_shift", message: `칸이 ${r.shifted > 0 ? "오른쪽" : "왼쪽"}으로 한 칸 밀려 있어 맞춰서 읽었습니다` });
+        warnings.push({ tab, row: r.row, kind: "column_shift", message: "칸 배치가 다른 줄과 달라(한 칸 밀림) 담당자·사업자번호 위치에 맞춰 읽었습니다" });
       rows.push(r);
     });
   }
@@ -311,6 +345,7 @@ export function planViralImport(
       saleAmount: r.sale!,
       costAmount: r.cost ?? 0,
       manager: r.manager!,
+      managerLabel: r.managerRaw && r.managerRaw !== r.manager ? r.managerRaw : null,
       paymentReceived: !r.unpaid && !!r.paymentNote && /입금|^o$/i.test(r.paymentNote),
       paymentNote: r.paymentNote,
       invoiceIssued: r.invoiceIssued,
