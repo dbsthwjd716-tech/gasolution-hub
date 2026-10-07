@@ -98,7 +98,7 @@ export default async function Payroll(props: PageProps<"/payroll">) {
                   </table>
                 ) : (
                   <EntryEditor
-                    key={JSON.stringify([r.inputs, r.extras, r.auto])}
+                    key={JSON.stringify([r.inputs, r.extras])}
                     action={saveEntry.bind(null, ym, r.id)}
                     profile={r.profile}
                     tiers={tiers}
