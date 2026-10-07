@@ -12,21 +12,20 @@ export default async function Payroll(props: PageProps<"/payroll">) {
   const sp = await props.searchParams;
   const { supabase, me } = await getMe();
   if (!me || me.role === "staff") return <p className="glass p-5 text-sm">급여·인센티브는 대표·팀장만 볼 수 있습니다.</p>;
-  // 기본: 지난달 실적 (이번 달에 지급하는 급여)
+  // 기본: 지난달 실적
   const ym = typeof sp.m === "string" && /^\d{4}-\d{2}$/.test(sp.m) ? sp.m : shiftYm(currentYm(), -1);
   const { month, tiers, profiles, rows, team } = await loadPayrollMonth(supabase, ym);
   const closed = month?.status === "closed";
   const missing = profiles.filter((p) => p.is_active && !rows.some((r) => r.staff_id === p.staff_id));
   const sum = rows.reduce((t, r) => t + r.total, 0);
   const [y, m] = ym.split("-").map(Number);
-  const payYm = shiftYm(ym, 1);
 
   return (
     <div className="space-y-4">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">급여 · 인센티브</h1>
-          <p className="text-sm text-ink-soft">대표·팀장만 볼 수 있습니다. {y}년 {m}월 실적 → {Number(payYm.slice(5))}월 지급분</p>
+          <p className="text-sm text-ink-soft">대표·팀장만 볼 수 있습니다. {y}년 {m}월 실적 기준</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link href={`/payroll?m=${shiftYm(ym, -1)}`} className="btn btn-ghost">← 이전 달</Link>

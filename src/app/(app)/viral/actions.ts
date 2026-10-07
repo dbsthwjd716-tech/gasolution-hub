@@ -311,7 +311,7 @@ export async function runViralImport(): Promise<ImportResult> {
       description: o.description,
       start_date: o.startDate,
       end_date: o.endDate,
-      sale_amount: sheetSaleToNet(o.costAmount, o.saleAmount),
+      sale_amount: sheetSaleToNet(o.saleAmount),
       cost_amount: o.costAmount,
       source_sheet: o.tab,
       source_row: o.row,

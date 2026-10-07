@@ -35,7 +35,7 @@ test("상품 설명을 시트 모양으로", () => {
 test("발행요청 문구", () => {
   const t = viralRequestText({
     paidDate: "2026-10-02", company: "용접공구", representative: "이병석", businessNumber: "122-01-55229", emails: ["dongyangwel@naver.com"], hasRegistration: true,
-    items: [{ description: "26.10.04~26.11.02(30일) 메이크 2슬롯씩 30일 CUT-45k AIR 콤푸내장형", product_type: "슬롯", platform: "네이버", sale_amount: 396000 }],
+    items: [{ description: "26.10.04~26.11.02(30일) 메이크 2슬롯씩 30일 CUT-45k AIR 콤푸내장형", product_type: "슬롯", platform: "네이버", sale_amount: 360000 }],
   });
   assert.equal(t, `세금계산서 발행요청
 입금 10/02
@@ -52,7 +52,7 @@ test("발행요청 문구", () => {
 test("발행요청 문구: 설명에 날짜가 없으면 기간을 앞에 붙임", () => {
   const t = viralRequestText({
     paidDate: "2026-10-02", company: "용접공구", representative: null, businessNumber: null, emails: [], hasRegistration: false,
-    items: [{ description: "(30일) 메이크 2슬롯", product_type: "슬롯", platform: "네이버", sale_amount: 396000, start_date: "2026-10-04", end_date: "2026-11-02" }],
+    items: [{ description: "(30일) 메이크 2슬롯", product_type: "슬롯", platform: "네이버", sale_amount: 360000, start_date: "2026-10-04", end_date: "2026-11-02" }],
   });
   assert.match(t, /\n26\.10\.04~26\.11\.02\(30일\) 메이크 2슬롯\n/);
 });
@@ -63,9 +63,16 @@ test("단가표에 없는 상품 판매가: 공급가 ÷ 0.7, 100원 미만 버�
   assert.equal(defaultSale(0), 0);
 });
 
-test("시트 판매가가 0.7 규칙 금액이면 VAT 포함으로 보고 VAT 별도로 변환", () => {
-  assert.equal(sheetSaleToNet(176000, 251400), 228545);
-  assert.equal(sheetSaleToNet(145200, 396000), 396000);
+test("시트 판매가는 모두 VAT 포함 → VAT 별도로 변환 (9월 급여 시트 값)", () => {
+  assert.equal(sheetSaleToNet(251400), 228545);
+  assert.equal(sheetSaleToNet(396000), 360000);
+  assert.equal(sheetSaleToNet(770000), 700000);
+});
+
+test("발행요청 견적비용은 VAT 포함 금액으로 (228,545 → 251,400)", () => {
+  const t = viralRequestText({ paidDate: null, company: "수라간떡방", representative: null, businessNumber: null, emails: [], hasRegistration: false,
+    items: [{ description: "(10일) 애플 400타", product_type: "플레이스 트래픽", platform: "네이버", sale_amount: 228545 }, { description: "(10일) 메이크 2슬롯", product_type: "슬롯", platform: "네이버", sale_amount: 120000 }] });
+  assert.match(t, /4\. 견적비용 : 네이버플레이스 트래픽 251,400원, 네이버리워드 132,000원 \(합계 383,400원\)/);
 });
 
 test("단가표 판매가가 VAT 포함이면 수량을 곱한 뒤 VAT 별도로 (최적화 배포 78,570 × 10건)", () => {

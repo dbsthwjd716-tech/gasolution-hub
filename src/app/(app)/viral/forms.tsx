@@ -600,7 +600,7 @@ export function PriceForm({ action, partners, initial, submitLabel }: {
         <input name="cost_price" inputMode="numeric" defaultValue={initial?.cost_price ?? ""} placeholder="공급가 VAT포함" className="field text-right" aria-label="1개당 공급가 (VAT 포함)" required />
         <div className="flex gap-1">
           <input name="sale_price" inputMode="numeric" defaultValue={initial?.sale_price ?? ""} placeholder="판매가" className="field text-right" aria-label="1개당 판매가" required />
-          <select name="sale_vat_mode" defaultValue={initial?.sale_includes_vat ? "included" : "excluded"} className="field w-24 px-1 text-xs" aria-label="판매가 VAT">
+          <select name="sale_vat_mode" defaultValue={initial && !initial.sale_includes_vat ? "excluded" : "included"} className="field w-24 px-1 text-xs" aria-label="판매가 VAT">
             <option value="excluded">VAT 별도</option>
             <option value="included">VAT 포함</option>
           </select>

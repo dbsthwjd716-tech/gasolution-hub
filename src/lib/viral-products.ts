@@ -64,6 +64,8 @@ export function describeItem(i: { product_type: string; product_name?: string | 
 
 // 발행요청 문구에서 상품을 부르는 이름 (슬롯 → 리워드)
 const TYPE_IN_REQUEST: Record<string, string> = { 슬롯: "리워드" };
+// 판매가(VAT 별도) → 고객에게 안내하는 VAT 포함 금액 (228,545 → 251,400)
+const withVat = (net: number) => Math.round(net * 1.1);
 
 export function viralRequestText(o: {
   paidDate: string | null;
@@ -72,7 +74,7 @@ export function viralRequestText(o: {
   businessNumber: string | null;
   emails: string[];
   hasRegistration: boolean;
-  items: { description: string | null; product_type: string | null; platform: string | null; sale_amount: number; start_date?: string | null; end_date?: string | null }[];
+  items: { description: string | null; product_type: string | null; platform: string | null; sale_amount: number; start_date?: string | null; end_date?: string | null }[]; // sale_amount: VAT 별도
 }) {
   const ymd = (d: string) => `${d.slice(2, 4)}.${d.slice(5, 7)}.${d.slice(8, 10)}`;
   // 설명에 날짜가 없으면 시작일~끝나는 날을 앞에 붙임: "26.10.04~26.11.02(30일) 메이크 2슬롯"
@@ -84,8 +86,8 @@ export function viralRequestText(o: {
   const won = (n: number) => n.toLocaleString("ko-KR") + "원";
   const costs = o.items
     .filter((i) => i.sale_amount)
-    .map((i) => `${i.platform ?? ""}${i.product_type ? (TYPE_IN_REQUEST[i.product_type] ?? i.product_type) : ""} ${won(i.sale_amount)}`.trim());
-  const total = o.items.reduce((t, i) => t + i.sale_amount, 0);
+    .map((i) => `${i.platform ?? ""}${i.product_type ? (TYPE_IN_REQUEST[i.product_type] ?? i.product_type) : ""} ${won(withVat(i.sale_amount))}`.trim());
+  const total = o.items.reduce((t, i) => t + withVat(i.sale_amount), 0);
   return [
     "세금계산서 발행요청",
     `입금 ${o.paidDate ? md(o.paidDate) : "전"}`,
@@ -114,8 +116,7 @@ export function defaultSale(cost: number) {
   return Math.floor(cost / 0.7 / 100) * 100;
 }
 
-// 시트의 판매가가 '공급가 ÷ 0.7' 규칙으로 정한 금액이면 VAT 포함 가격 → VAT 별도로 바꿔 저장
-export function sheetSaleToNet(cost: number, sale: number) {
-  if (cost > 0 && sale === defaultSale(cost)) return Math.round(sale / 1.1);
-  return sale;
+// 협력사 시트의 판매가는 모두 고객이 내는 VAT 포함 금액 → VAT 별도로 바꿔 저장 (팀장 확인, 9월 급여 시트와 일치)
+export function sheetSaleToNet(sale: number) {
+  return Math.round(sale / 1.1);
 }
