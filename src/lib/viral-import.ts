@@ -101,8 +101,9 @@ function yes(v: unknown): boolean {
 export function normalizeManager(v: unknown, known: string[] = []): string | null {
   const t = text(v);
   if (!t) return null;
-  const hit = known.find((k) => t.includes(k));
-  return hit ?? t;
+  // 여러 이름이 들어 있으면(예: "박영서(파생서진원)") 맨 앞에 적힌 사람이 담당
+  const hits = known.filter((k) => t.includes(k)).sort((a, b) => t.indexOf(a) - t.indexOf(b));
+  return hits[0] ?? t;
 }
 
 export function normalizeName(v: string): string {

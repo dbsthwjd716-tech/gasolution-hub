@@ -201,3 +201,9 @@ test("파생 표기는 같은 날 같은 담당이어도 별도 건으로 묶음
   assert.equal(g.length, 2);
   assert.deepEqual(g.map((x) => x.derived).sort(), [false, true]);
 });
+
+test("담당 표기에 이름이 둘이면 앞사람이 담당 (박영서(파생서진원) → 박영서)", async () => {
+  const { normalizeManager } = await import("./viral-import.ts");
+  assert.equal(normalizeManager("박영서(파생서진원)", ["서진원", "박영서"]), "박영서");
+  assert.equal(normalizeManager("남지윤(파생)", ["서진원", "남지윤"]), "남지윤");
+});
