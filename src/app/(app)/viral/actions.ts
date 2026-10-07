@@ -135,18 +135,29 @@ export async function runViralImport(): Promise<ImportResult> {
   const byName = new Map<string, string>();
   for (const c of clients ?? []) byName.set(normalizeName(c.company_name), c.id);
   for (const a of aliases ?? []) byName.set(a.normalized, a.client_id);
+  const provisional = new Set((clients ?? []).filter((c) => !c.business_number).map((c) => c.id));
 
   // 1) 거래처 맞추기·만들기
   const clientIdForKey = new Map<string, string>();
   let created = 0;
   let matched = 0;
   for (const c of plan.clients) {
+    const sameName = [c.companyName, ...c.otherNames].map((n) => byName.get(normalizeName(n))).find(Boolean);
     let id =
       (c.businessNumber && byBn.get(c.businessNumber)) ||
-      (!c.businessNumber && [c.companyName, ...c.otherNames].map((n) => byName.get(normalizeName(n))).find(Boolean)) ||
+      (!c.businessNumber && sameName) ||
+      // 시트에 사업자번호가 있고 같은 이름의 '임시 거래처'(사업자번호 없음)가 있으면 그 거래처에 번호를 채워 넣음
+      (c.businessNumber && sameName && provisional.has(sameName) ? sameName : null) ||
       null;
     if (id) {
       matched++;
+      if (c.businessNumber && provisional.has(id)) {
+        const { error } = await supabase.from("clients").update({ business_number: c.businessNumber }).eq("id", id);
+        if (!error) {
+          provisional.delete(id);
+          byBn.set(c.businessNumber, id);
+        }
+      }
       // 비어 있는 칸만 시트 정보로 채움 (이미 입력된 값은 건드리지 않음)
       const { data: cur } = await supabase
         .from("clients")
