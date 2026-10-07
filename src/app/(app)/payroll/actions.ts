@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getMe } from "@/lib/supabase/server";
 import { EMPTY_INPUTS, type Inputs } from "@/lib/payroll";
+import { fetchDashboardSpend } from "@/lib/dashboard";
 import { loadPayrollMonth, shiftYm, ymToDate } from "./data";
 
 export type FormState = { error: string; ok?: string };
@@ -174,4 +175,25 @@ export async function deleteTier(id: string) {
   await supabase.from("payroll_tiers").delete().eq("id", id);
   revalidatePath("/payroll/settings");
   touch();
+}
+
+// 기존 대시보드에서 소진액 불러오기: 네이버 소진액(VAT 제외) → '네이버 소진액', 메타 소진액 ÷ 1.1 → '네이버 외 매체 소진액'
+// 카카오 등 대시보드에 없는 매체·인계 계정 소진액은 불러온 뒤 직접 더해야 함
+export async function importDashboardSpend(ym: string, _p: FormState, _f: FormData): Promise<FormState> {
+  const { supabase } = await manager();
+  const { rows, error } = await fetchDashboardSpend(ymToDate(ym));
+  if (error) return { error };
+  const { data: entries } = await supabase.from("payroll_entries").select("id,inputs,staff:staff_id(name)").eq("month", ymToDate(ym));
+  const done: string[] = [];
+  for (const e of entries ?? []) {
+    const name = (e.staff as unknown as { name: string } | null)?.name;
+    const d = rows.find((r) => r.employee_name === name);
+    if (!d) continue;
+    const inputs = { ...EMPTY_INPUTS, ...(e.inputs as Partial<Inputs>), naver_spend: d.naver_spend, other_spend: Math.round(d.meta_spend / 1.1) };
+    const { error: ue } = await supabase.from("payroll_entries").update({ inputs }).eq("id", e.id);
+    if (ue) return { error: friendly(ue.message) };
+    done.push(`${name} 네이버 ${d.naver_spend.toLocaleString("ko-KR")} · 메타 ${Math.round(d.meta_spend / 1.1).toLocaleString("ko-KR")}`);
+  }
+  touch(ym);
+  return done.length ? { error: "", ok: `불러왔습니다 — ${done.join(" / ")}` } : { error: "이 달 급여 직원과 이름이 맞는 대시보드 담당자가 없습니다." };
 }

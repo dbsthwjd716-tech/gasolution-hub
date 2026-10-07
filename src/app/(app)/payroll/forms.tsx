@@ -198,3 +198,15 @@ export function TierForm({ action, initial, kind }: { action: Action; initial?: 
     </form>
   );
 }
+
+// 기존 대시보드에서 네이버·메타 소진액 불러오기
+export function DashboardImport({ action }: { action: Action }) {
+  const [state, formAction, pending] = useActionState(action, { error: "" });
+  return (
+    <form action={formAction} className="space-y-1">
+      <button className="btn btn-ghost" disabled={pending}>{pending ? "불러오는 중…" : "대시보드에서 소진액 불러오기"}</button>
+      <p className="text-[11px] text-ink-soft">네이버(이관 광고비)·메타 소진액을 담당자별로 채웁니다. 카카오 등 다른 매체와 인계 계정은 불러온 뒤 직접 더해 주세요.</p>
+      <Message state={state} />
+    </form>
+  );
+}

@@ -2,9 +2,9 @@ import Link from "next/link";
 import { getMe } from "@/lib/supabase/server";
 import { TRACK_LABEL } from "@/lib/payroll";
 import { ConfirmSubmit } from "../billing/panel";
-import { addEntry, closeMonth, removeEntry, reopenMonth, saveEntry, saveMonth, startMonth } from "./actions";
+import { addEntry, closeMonth, importDashboardSpend, removeEntry, reopenMonth, saveEntry, saveMonth, startMonth } from "./actions";
 import { currentYm, loadPayrollMonth, shiftYm } from "./data";
-import { EntryEditor, MonthForm } from "./forms";
+import { DashboardImport, EntryEditor, MonthForm } from "./forms";
 
 const won = (n: number) => Math.round(n).toLocaleString("ko-KR");
 
@@ -58,6 +58,7 @@ export default async function Payroll(props: PageProps<"/payroll">) {
                 <form action={closeMonth.bind(null, ym)}><button className="btn">이 달 마감 (금액 확정)</button></form>
               )}
             </div>
+            {!closed && <DashboardImport action={importDashboardSpend.bind(null, ym)} />}
             <MonthForm action={saveMonth.bind(null, ym)} goal={Number(month.team_goal)} bonus={Number(month.team_bonus)} memo={month.memo} readOnly={closed} />
           </section>
 
@@ -124,7 +125,7 @@ export default async function Payroll(props: PageProps<"/payroll">) {
             </section>
           )}
           <p className="text-xs text-ink-soft">
-            네이버·네이버 외 매체 소진액과 마크업 수수료는 지금은 직접 입력합니다. 기존 대시보드가 연결되면 자동으로 채워집니다.
+            네이버·메타 소진액은 「대시보드에서 소진액 불러오기」로 채울 수 있습니다. 카카오 등 다른 매체, 인계 계정, 마크업 수수료는 직접 입력합니다.
             바이럴은 통합 시스템의 입금일 기준 그 달 판매가(VAT 별도)를 자동으로 가져오며, 제품비처럼 인센티브 제외로 표시된 상품은 뺍니다.
           </p>
         </>
