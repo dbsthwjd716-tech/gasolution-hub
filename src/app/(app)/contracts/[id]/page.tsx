@@ -68,6 +68,12 @@ export default async function ContractDetail(props: PageProps<"/contracts/[id]">
         <div className="space-y-4">
           <section className="glass space-y-3 p-5">
             <h2 className="font-bold">진행</h2>
+            {k.document_required && (
+              <div className="space-y-1">
+                <a href={`/contracts/${id}/docx`} className="btn btn-ghost w-full">계약서 Word 파일 만들기</a>
+                <p className="text-xs text-ink-soft">계약 조건과 거래처 정보(대표자·사업자번호·주소)를 양식에 채워 내려받습니다. Word에서 확인 후 PDF로 저장해 서명을 받아 주세요. 조건을 바꿨다면 먼저 저장하세요.</p>
+              </div>
+            )}
             {k.signed_file_path && (
               <p className="text-sm">
                 서명본: {links[k.signed_file_path] ? <a href={links[k.signed_file_path]} target="_blank" rel="noreferrer" className="text-brand underline">{k.signed_file_name ?? "열기"}</a> : k.signed_file_name}
