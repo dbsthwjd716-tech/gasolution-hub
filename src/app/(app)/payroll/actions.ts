@@ -178,7 +178,7 @@ export async function deleteTier(id: string) {
 }
 
 // 기존 대시보드에서 소진액 불러오기: 네이버 소진액(VAT 제외) → '네이버 소진액', 메타 소진액 ÷ 1.1 → '네이버 외 매체 소진액'
-// 카카오 등 대시보드에 없는 매체·인계 계정 소진액은 불러온 뒤 직접 더해야 함
+// 진원 인계건(대시보드 그룹 급여 구분) 소진액은 서진원의 인계 계정 소진액으로. 카카오 등 대시보드에 없는 매체는 직접 더함
 export async function importDashboardSpend(ym: string, _p: FormState, _f: FormData): Promise<FormState> {
   const { supabase } = await manager();
   const { rows, error } = await fetchDashboardSpend(ymToDate(ym));
@@ -189,10 +189,18 @@ export async function importDashboardSpend(ym: string, _p: FormState, _f: FormDa
     const name = (e.staff as unknown as { name: string } | null)?.name;
     const d = rows.find((r) => r.employee_name === name);
     if (!d) continue;
-    const inputs = { ...EMPTY_INPUTS, ...(e.inputs as Partial<Inputs>), naver_spend: d.naver_spend, other_spend: Math.round(d.meta_spend / 1.1) };
+    const inputs = {
+      ...EMPTY_INPUTS,
+      ...(e.inputs as Partial<Inputs>),
+      naver_spend: d.naver_spend,
+      other_spend: Math.round(d.meta_spend / 1.1),
+      handover_spend: d.handover_spend,
+      handover_new_spend: d.handover_new_spend,
+    };
     const { error: ue } = await supabase.from("payroll_entries").update({ inputs }).eq("id", e.id);
     if (ue) return { error: friendly(ue.message) };
-    done.push(`${name} 네이버 ${d.naver_spend.toLocaleString("ko-KR")} · 메타 ${Math.round(d.meta_spend / 1.1).toLocaleString("ko-KR")}`);
+    const ho = d.handover_spend + d.handover_new_spend;
+    done.push(`${name} 네이버 ${d.naver_spend.toLocaleString("ko-KR")} · 메타 ${Math.round(d.meta_spend / 1.1).toLocaleString("ko-KR")}${ho ? ` · 인계 ${ho.toLocaleString("ko-KR")}` : ""}`);
   }
   touch(ym);
   return done.length ? { error: "", ok: `불러왔습니다 — ${done.join(" / ")}` } : { error: "이 달 급여 직원과 이름이 맞는 대시보드 담당자가 없습니다." };
