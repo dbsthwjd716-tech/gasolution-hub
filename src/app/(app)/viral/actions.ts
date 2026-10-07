@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { groupOrders, normalizeName, type ImportPlan } from "@/lib/viral-import";
+import { PRODUCT_TYPES } from "@/lib/viral-products";
+import { calcEstimateLine } from "@/lib/billing-calc";
 
 // 시트에 "(파생)"으로 적힌 건의 파생 실적자
 const DERIVED_STAFF_NAME = "서진원";
@@ -38,6 +40,11 @@ type ItemInput = {
   cost_amount: number;
   sale_amount: number;
   incentive_excluded: boolean;
+  product_type: string | null;
+  platform: string | null;
+  product_name: string | null;
+  days: number | null;
+  quantity: number | null;
 };
 
 function parseItems(f: FormData): { items: ItemInput[] } | { error: string } {
@@ -51,7 +58,7 @@ function parseItems(f: FormData): { items: ItemInput[] } | { error: string } {
   const items: ItemInput[] = [];
   for (const [idx, r] of raw.entries()) {
     const it = r as Partial<ItemInput>;
-    const empty = !it.description && !it.sale_amount && !it.cost_amount;
+    const empty = !it.description && !it.sale_amount && !it.cost_amount && !it.product_type;
     if (empty) continue; // 아무것도 안 적은 줄은 무시
     if (!Number.isFinite(it.sale_amount) || !Number.isFinite(it.cost_amount))
       return { error: `상품 ${idx + 1}줄의 금액을 숫자로 입력해 주세요.` };
@@ -66,6 +73,11 @@ function parseItems(f: FormData): { items: ItemInput[] } | { error: string } {
       cost_amount: Math.round(it.cost_amount!),
       sale_amount: Math.round(it.sale_amount!),
       incentive_excluded: it.incentive_excluded === true,
+      product_type: it.product_type && (PRODUCT_TYPES as readonly string[]).includes(it.product_type) ? it.product_type : null,
+      platform: typeof it.platform === "string" && it.platform.trim() ? it.platform.trim().slice(0, 30) : null,
+      product_name: typeof it.product_name === "string" && it.product_name.trim() ? it.product_name.trim().slice(0, 60) : null,
+      days: Number.isInteger(it.days) && (it.days as number) > 0 ? (it.days as number) : null,
+      quantity: Number.isFinite(it.quantity) && (it.quantity as number) >= 0 ? (it.quantity as number) : null,
     });
   }
   if (!items.length) return { error: "상품을 한 줄 이상 입력해 주세요." };
@@ -330,4 +342,146 @@ export async function runViralImport(): Promise<ImportResult> {
     error: "",
     done: { clientsCreated: created, clientsMatched: matched, ordersSaved: orderIdForKey.size, itemsSaved: saved, unknownManagers: [...unknownManagers] },
   };
+}
+
+// ---------------------------------------------------------------- 환불 · 미소진 잔액
+const CREDIT_ENTRIES: Record<string, "refund" | "prepaid"> = {
+  refund_issued: "refund",
+  refund_paid: "refund",
+  refund_applied: "refund",
+  prepaid_received: "prepaid",
+  prepaid_used: "prepaid",
+};
+
+export async function addViralCredit(orderId: string, clientId: string, _p: FormState, f: FormData): Promise<FormState> {
+  const entry = s(f, "entry") ?? "";
+  const kind = CREDIT_ENTRIES[entry];
+  if (!kind) return { error: "기록 종류를 골라 주세요." };
+  const amount = money(f, "amount");
+  if (!amount || Number.isNaN(amount) || amount <= 0) return { error: "금액을 0보다 크게 입력해 주세요." };
+  const partnerRefund = money(f, "partner_refund") ?? 0;
+  if (Number.isNaN(partnerRefund) || partnerRefund < 0) return { error: "협력사 환불 금액을 확인해 주세요." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("viral_credits").insert({
+    client_id: clientId,
+    order_id: orderId,
+    item_id: s(f, "item_id"),
+    kind,
+    entry,
+    amount,
+    partner_refund: entry === "refund_issued" ? partnerRefund : 0,
+    occurred_on: s(f, "occurred_on") ?? undefined,
+    memo: s(f, "memo"),
+  });
+  if (error) return { error: friendly(error.message) };
+  revalidatePath(`/viral/${orderId}`);
+  revalidatePath("/viral/balances");
+  return { error: "", ok: "기록했습니다." };
+}
+
+export async function deleteViralCredit(orderId: string, creditId: string) {
+  const supabase = await createClient();
+  await supabase.from("viral_credits").delete().eq("id", creditId);
+  revalidatePath(`/viral/${orderId}`);
+  revalidatePath("/viral/balances");
+}
+
+// ---------------------------------------------------------------- 견적서 자동 만들기
+export async function createEstimateFromOrder(orderId: string) {
+  const { supabase, me } = await getMe();
+  if (!me) redirect("/login");
+  const { data: o } = await supabase
+    .from("viral_orders")
+    .select("id,client_id,billing_document_id,paid_date,clients(company_name,representative_name,business_number,address,billing_emails)")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (!o) redirect("/viral");
+  if (o.billing_document_id) redirect(`/billing/${o.billing_document_id}`);
+  const { data: items } = await supabase
+    .from("viral_order_items")
+    .select("description,product_type,platform,product_name,quantity,sale_amount")
+    .eq("order_id", orderId)
+    .order("sort_order")
+    .order("created_at");
+  const c = (Array.isArray(o.clients) ? o.clients[0] : o.clients) as {
+    company_name: string; representative_name: string | null; business_number: string | null; address: string | null; billing_emails: string[];
+  };
+  // 판매가(VAT 별도) → 견적서 단가(VAT 포함)
+  const lines = (items ?? []).filter((i) => i.sale_amount).map((i, idx) => {
+    const unit = Math.round(Number(i.sale_amount) * 1.1);
+    const r = calcEstimateLine(unit, 1);
+    return {
+      sort_order: idx + 1,
+      item_name: [i.platform, i.product_type === "슬롯" ? "리워드" : i.product_type].filter(Boolean).join(" ") || "바이럴",
+      description: i.description,
+      unit_price: unit,
+      quantity: 1,
+      supply_amount: r.supply,
+      vat_amount: r.vat,
+      total_amount: r.total,
+    };
+  });
+  const supply = lines.reduce((t, l) => t + l.supply_amount, 0);
+  const vat = lines.reduce((t, l) => t + l.vat_amount, 0);
+  const { data: doc, error } = await supabase
+    .from("billing_documents")
+    .insert({
+      doc_type: "viral_estimate",
+      supplier_code: "ga",
+      client_id: o.client_id,
+      recipient_company_name: c.company_name,
+      recipient_representative_name: c.representative_name,
+      recipient_business_number: c.business_number,
+      recipient_address: c.address,
+      recipient_emails: c.billing_emails ?? [],
+      supply_amount: supply,
+      vat_amount: vat,
+      total_amount: supply + vat,
+      status: "draft",
+    })
+    .select("id")
+    .single();
+  if (error || !doc) redirect(`/viral/${orderId}?estimate_error=1`);
+  if (lines.length) await supabase.from("billing_items").insert(lines.map((l) => ({ ...l, billing_document_id: doc.id })));
+  await supabase.from("viral_orders").update({ billing_document_id: doc.id }).eq("id", orderId);
+  revalidatePath(`/viral/${orderId}`);
+  redirect(`/billing/${doc.id}`);
+}
+
+// ---------------------------------------------------------------- 협력사 단가표 (대표·팀장)
+export async function savePrice(id: string | null, _p: FormState, f: FormData): Promise<FormState> {
+  const partner_id = s(f, "partner_id");
+  const product_type = s(f, "product_type");
+  if (!partner_id || !product_type || !(PRODUCT_TYPES as readonly string[]).includes(product_type)) return { error: "협력사와 상품 종류를 골라 주세요." };
+  const cost = money(f, "cost_price");
+  const sale = money(f, "sale_price");
+  if (cost === null || sale === null || Number.isNaN(cost) || Number.isNaN(sale) || cost < 0 || sale < 0) return { error: "공급가·판매가를 숫자로 입력해 주세요." };
+  const daysRaw = s(f, "days");
+  const days = daysRaw ? Number(daysRaw) : null;
+  if (days !== null && (!Number.isInteger(days) || days <= 0)) return { error: "일수를 확인해 주세요." };
+  const row = {
+    partner_id,
+    product_type,
+    platform: s(f, "platform"),
+    product_name: s(f, "product_name"),
+    days,
+    unit_label: s(f, "unit_label") ?? (product_type === "슬롯" ? "슬롯" : "건"),
+    cost_price: cost,
+    sale_price: sale,
+    memo: s(f, "memo"),
+  };
+  const supabase = await createClient();
+  const { data, error } = id
+    ? await supabase.from("viral_price_list").update(row).eq("id", id).select("id")
+    : await supabase.from("viral_price_list").insert(row).select("id");
+  if (error) return { error: error.code === "23505" ? "같은 조건의 단가가 이미 있습니다. 그 줄을 고쳐 주세요." : friendly(error.message) };
+  if (!data?.length) return { error: "대표·팀장만 단가를 바꿀 수 있습니다." };
+  revalidatePath("/viral/prices");
+  return { error: "", ok: "저장했습니다." };
+}
+
+export async function deletePrice(id: string) {
+  const supabase = await createClient();
+  await supabase.from("viral_price_list").delete().eq("id", id);
+  revalidatePath("/viral/prices");
 }

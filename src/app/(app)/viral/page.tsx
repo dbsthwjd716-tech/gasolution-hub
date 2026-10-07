@@ -94,6 +94,8 @@ export default async function ViralPage(props: PageProps<"/viral">) {
           <p className="text-sm text-ink-soft">거래처를 고르면 업체 정보는 자동으로 들어갑니다. 구글 시트 대신 여기에 입력합니다.</p>
         </div>
         <div className="flex gap-2">
+          <Link href="/viral/balances" className="btn btn-ghost">환불·미소진 잔액</Link>
+          <Link href="/viral/prices" className="btn btn-ghost">단가표</Link>
           {(me?.role === "ceo" || me?.role === "lead") && <Link href="/viral/import" className="btn btn-ghost">시트에서 옮기기</Link>}
           <Link href="/viral/new" className="btn">바이럴 건 입력</Link>
         </div>

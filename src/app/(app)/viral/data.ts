@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ClientOption } from "./forms";
 import { readTabs } from "@/lib/google-sheets";
+import type { PriceRow } from "@/lib/viral-products";
 import { getMe } from "@/lib/supabase/server";
 import { PARTNER_TABS, planViralImport, type ImportPlan } from "@/lib/viral-import";
 
@@ -29,6 +30,15 @@ export async function loadClientOptions(supabase: SupabaseClient): Promise<Clien
 export async function loadActiveStaff(supabase: SupabaseClient) {
   const { data } = await supabase.from("staff").select("id,name").eq("is_active", true).order("name");
   return data ?? [];
+}
+
+// 협력사 단가표 (입력 화면 자동 계산용)
+export async function loadPrices(supabase: SupabaseClient): Promise<PriceRow[]> {
+  const { data } = await supabase
+    .from("viral_price_list")
+    .select("id,partner_id,product_type,platform,product_name,days,unit_label,cost_price,sale_price")
+    .eq("is_active", true);
+  return (data ?? []).map((p) => ({ ...p, cost_price: Number(p.cost_price), sale_price: Number(p.sale_price) }));
 }
 
 export async function loadPartners(supabase: SupabaseClient) {

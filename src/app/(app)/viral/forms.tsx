@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
 import { formatBizNo } from "@/lib/bizno";
+import { describeItem, endDate, findPrice, lineAmounts, PLATFORMS, PRODUCT_TYPES, SLOT_DAYS, type PriceRow } from "@/lib/viral-products";
 import type { FormState } from "./actions";
 
 type Action = (prev: FormState, f: FormData) => Promise<FormState>;
@@ -27,6 +28,11 @@ export type ItemValues = {
   cost_amount: number;
   sale_amount: number;
   incentive_excluded?: boolean;
+  product_type?: string | null;
+  platform?: string | null;
+  product_name?: string | null;
+  days?: number | null;
+  quantity?: number | null;
 };
 
 export type OrderValues = {
@@ -43,7 +49,25 @@ export type OrderValues = {
 let keySeq = 0;
 const newKey = () => `row-${++keySeq}`;
 
-type ItemDraft = { key: string; id?: string; description: string; start_date: string; end_date: string; cost: string; sale: string; excluded: boolean; excludedTouched: boolean };
+type ItemDraft = {
+  key: string;
+  id?: string;
+  type: string; // 상품 종류
+  platform: string; // 네이버·쿠팡·인스타 또는 직접 입력한 값
+  productName: string; // 협력사 상품명 (예: 메이크)
+  days: string; // "10" | "20" | "30" | 직접 입력 숫자
+  customDays: boolean;
+  qty: string;
+  description: string;
+  descTouched: boolean; // 설명을 직접 고쳤으면 자동 설명으로 덮지 않음
+  start_date: string;
+  end_date: string;
+  cost: string;
+  sale: string;
+  amountsManual: boolean; // 금액을 직접 고쳤으면 단가표로 덮지 않음
+  excluded: boolean;
+  excludedTouched: boolean;
+};
 
 const won = (n: number) => n.toLocaleString("ko-KR");
 // 한국 시간 기준 오늘 (YYYY-MM-DD)
@@ -98,6 +122,7 @@ export function ViralOrderForm({
   readOnly = false,
   staff = [],
   canSetDerived = false,
+  prices = [],
 }: {
   action: Action;
   clients: ClientOption[];
@@ -107,24 +132,58 @@ export function ViralOrderForm({
   readOnly?: boolean;
   staff?: { id: string; name: string }[];
   canSetDerived?: boolean;
+  prices?: PriceRow[];
 }) {
   const [state, formAction, pending] = useActionState(action, { error: "" });
   const [clientId, setClientId] = useState(initial.client_id ?? "");
   const [q, setQ] = useState("");
+  const [partnerId, setPartnerId] = useState(initial.partner_id ?? "");
   const toDraft = (i: ItemValues): ItemDraft => ({
     key: i.id ?? newKey(),
     id: i.id,
+    type: i.product_type ?? "",
+    platform: i.platform ?? "",
+    productName: i.product_name ?? "",
+    days: i.days ? String(i.days) : "",
+    customDays: !!i.days && !SLOT_DAYS.includes(i.days),
+    qty: i.quantity != null ? String(Number(i.quantity)) : "",
     description: i.description ?? "",
+    descTouched: true,
     start_date: i.start_date ?? "",
     end_date: i.end_date ?? "",
     cost: i.cost_amount ? won(i.cost_amount) : "",
     sale: won(i.sale_amount ?? 0),
+    amountsManual: true,
     excluded: !!i.incentive_excluded,
     excludedTouched: true,
   });
-  const blank = (): ItemDraft => ({ key: newKey(), description: "", start_date: "", end_date: "", cost: "", sale: "", excluded: false, excludedTouched: false });
+  const blank = (): ItemDraft => ({
+    key: newKey(), type: "", platform: "네이버", productName: "", days: "", customDays: false, qty: "", description: "", descTouched: false,
+    start_date: "", end_date: "", cost: "", sale: "", amountsManual: false, excluded: false, excludedTouched: false,
+  });
   const [items, setItems] = useState<ItemDraft[]>(initial.items?.length ? initial.items.map(toDraft) : [blank()]);
-  const setItem = (key: string, patch: Partial<ItemDraft>) => setItems((xs) => xs.map((x) => (x.key === key ? { ...x, ...patch } : x)));
+
+  // 한 줄의 값이 바뀌면: 끝나는 날·설명·인센티브 제외·단가표 금액을 다시 맞춤
+  const refresh = (x: ItemDraft, pid: string): ItemDraft => {
+    const days = Number(x.days) || 0;
+    const next = { ...x };
+    if (x.start_date && days) next.end_date = endDate(x.start_date, days);
+    if (!x.descTouched && x.type)
+      next.description = describeItem({ product_type: x.type, product_name: x.productName, days: days || null, quantity: Number(x.qty) || null, start_date: x.start_date || null, end_date: next.end_date || null });
+    if (!x.excludedTouched) next.excluded = x.type === "가구매 제품비" || /제품비/.test(next.description);
+    if (!x.amountsManual && x.type && pid) {
+      const price = findPrice(prices, { partnerId: pid, productType: x.type, platform: x.platform, productName: x.productName, days: days || null });
+      if (price && Number(x.qty) > 0) {
+        const a = lineAmounts(price, Number(x.qty));
+        next.cost = won(a.cost);
+        next.sale = won(a.sale);
+      }
+    }
+    return next;
+  };
+  const setItem = (key: string, patch: Partial<ItemDraft>) => setItems((xs) => xs.map((x) => (x.key === key ? refresh({ ...x, ...patch }, partnerId) : x)));
+  const priceFor = (x: ItemDraft) =>
+    partnerId && x.type ? findPrice(prices, { partnerId, productType: x.type, platform: x.platform, productName: x.productName, days: Number(x.days) || null }) : null;
   const client = clients.find((c) => c.id === clientId);
   // 판매가는 VAT 별도, 공급가는 VAT 포함 → 공급가에서 VAT를 빼고 비교 (데이터베이스 계산과 같음)
   const totalSale = items.reduce((t, i) => t + digits(i.sale), 0);
@@ -142,6 +201,11 @@ export function ViralOrderForm({
       cost_amount: digits(i.cost),
       sale_amount: digits(i.sale),
       incentive_excluded: i.excluded,
+      product_type: i.type || null,
+      platform: i.platform.trim() || null,
+      product_name: i.productName.trim() || null,
+      days: Number(i.days) || null,
+      quantity: i.qty === "" ? null : Number(i.qty),
     })),
   );
 
@@ -218,7 +282,18 @@ export function ViralOrderForm({
           )}
           <div>
             <label className="label" htmlFor="partner_id">협력사 *</label>
-            <select id="partner_id" name="partner_id" required defaultValue={initial.partner_id ?? ""} className="field">
+            <select
+              id="partner_id"
+              name="partner_id"
+              required
+              value={partnerId}
+              onChange={(e) => {
+                const pid = e.target.value;
+                setPartnerId(pid);
+                setItems((xs) => xs.map((x) => refresh(x, pid)));
+              }}
+              className="field"
+            >
               <option value="" disabled>골라 주세요</option>
               {partners.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
@@ -242,35 +317,91 @@ export function ViralOrderForm({
           <div className="md:col-span-2">
             <div className="mb-2 flex items-end justify-between">
               <span className="label mb-0">상품 (슬롯·상품별로 한 줄씩)</span>
-              <span className="text-xs text-ink-soft">공급가는 VAT 포함, 판매가는 VAT 별도 · 환불은 -로 입력</span>
+              <span className="text-xs text-ink-soft">공급가는 VAT 포함, 판매가는 VAT 별도 (인센티브는 판매가 VAT 별도로 계산)</span>
             </div>
             <div className="space-y-3">
-              {items.map((it, idx) => (
-                <div key={it.key} className="rounded-xl border border-[var(--glass-border)] bg-white/60 p-3">
-                  <div className="grid gap-2 md:grid-cols-[1fr_140px_140px]">
-                    <input value={it.description} onChange={(e) => setItem(it.key, it.excludedTouched ? { description: e.target.value } : { description: e.target.value, excluded: /제품비/.test(e.target.value) })} placeholder={`상품 ${idx + 1} 내용 (예: 우상향 30슬롯 4스타세트)`} className="field" aria-label={`상품 ${idx + 1} 내용`} />
-                    <input type="date" value={it.start_date} onChange={(e) => setItem(it.key, { start_date: e.target.value })} className="field" aria-label={`상품 ${idx + 1} 시작일`} />
-                    <input type="date" value={it.end_date} onChange={(e) => setItem(it.key, { end_date: e.target.value })} className="field" aria-label={`상품 ${idx + 1} 끝나는 날`} />
+              {items.map((it, idx) => {
+                const price = priceFor(it);
+                const n = idx + 1;
+                const isSlot = it.type === "슬롯";
+                const otherPlatform = !!it.platform && !PLATFORMS.includes(it.platform);
+                return (
+                <div key={it.key} className="space-y-2 rounded-xl border border-[var(--glass-border)] bg-white/60 p-3">
+                  <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-4">
+                    <select value={it.type} onChange={(e) => setItem(it.key, { type: e.target.value })} className="field" aria-label={`상품 ${n} 종류`}>
+                      <option value="">상품 종류 선택</option>
+                      {PRODUCT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <div className="flex gap-1">
+                      <select
+                        value={otherPlatform || it.platform === "기타" ? "기타" : it.platform}
+                        onChange={(e) => setItem(it.key, { platform: e.target.value === "기타" ? "기타" : e.target.value })}
+                        className="field"
+                        aria-label={`상품 ${n} 적용 매체`}
+                      >
+                        <option value="">매체</option>
+                        {PLATFORMS.map((m) => <option key={m} value={m}>{m}</option>)}
+                        <option value="기타">기타 (직접 입력)</option>
+                      </select>
+                      {(otherPlatform || it.platform === "기타") && (
+                        <input value={it.platform === "기타" ? "" : it.platform} onChange={(e) => setItem(it.key, { platform: e.target.value || "기타" })} placeholder="매체 이름" className="field" aria-label={`상품 ${n} 매체 직접 입력`} />
+                      )}
+                    </div>
+                    <input value={it.productName} onChange={(e) => setItem(it.key, { productName: e.target.value })} placeholder="협력사 상품명 (예: 메이크)" className="field" aria-label={`상품 ${n} 협력사 상품명`} />
+                    <div className="flex gap-1">
+                      <input inputMode="decimal" value={it.qty} onChange={(e) => setItem(it.key, { qty: e.target.value.replace(/[^\d.]/g, "") })} placeholder={isSlot ? "슬롯 수" : "수량(건)"} className="field text-right" aria-label={`상품 ${n} 수량`} />
+                      <span className="self-center whitespace-nowrap text-xs text-ink-soft">{isSlot ? "슬롯" : "건"}</span>
+                    </div>
                   </div>
-                  <div className="mt-2 grid grid-cols-1 items-center gap-2 sm:grid-cols-2 md:grid-cols-[1fr_1fr_auto_auto]">
+                  <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-[1fr_140px_140px]">
+                    {isSlot ? (
+                      <div className="flex flex-wrap items-center gap-1">
+                        {SLOT_DAYS.map((d) => (
+                          <button key={d} type="button" onClick={() => setItem(it.key, { days: String(d), customDays: false })} className={`rounded-lg border px-3 py-2 text-sm ${!it.customDays && it.days === String(d) ? "border-brand bg-brand text-white" : "border-[var(--glass-border)] bg-white"}`}>{d}일</button>
+                        ))}
+                        <button type="button" onClick={() => setItem(it.key, { customDays: true })} className={`rounded-lg border px-3 py-2 text-sm ${it.customDays ? "border-brand bg-brand-soft" : "border-[var(--glass-border)] bg-white"}`}>직접</button>
+                        {it.customDays && <input inputMode="numeric" value={it.days} onChange={(e) => setItem(it.key, { days: e.target.value.replace(/[^\d]/g, "") })} placeholder="일수" className="field w-20 text-right" aria-label={`상품 ${n} 일수`} />}
+                      </div>
+                    ) : (
+                      <input inputMode="numeric" value={it.days} onChange={(e) => setItem(it.key, { days: e.target.value.replace(/[^\d]/g, ""), customDays: true })} placeholder="진행 일수 (선택)" className="field" aria-label={`상품 ${n} 일수`} />
+                    )}
+                    <input type="date" value={it.start_date} onChange={(e) => setItem(it.key, { start_date: e.target.value })} className="field" aria-label={`상품 ${n} 시작일`} />
+                    <input type="date" value={it.end_date} onChange={(e) => setItem(it.key, { end_date: e.target.value })} className="field" aria-label={`상품 ${n} 끝나는 날`} />
+                  </div>
+                  <input value={it.description} onChange={(e) => setItem(it.key, { description: e.target.value, descTouched: true })} placeholder={`상품 ${n} 내용 (종류·일수·수량을 고르면 자동으로 채워짐)`} className="field" aria-label={`상품 ${n} 내용`} />
+                  <div className="grid grid-cols-1 items-center gap-2 sm:grid-cols-2 md:grid-cols-[1fr_1fr_auto_auto]">
                     <label className="flex items-center gap-2 text-xs text-ink-soft">
                       <span className="w-14 shrink-0">공급가<br />VAT포함</span>
-                      <input inputMode="numeric" value={it.cost} onChange={(e) => setItem(it.key, { cost: e.target.value ? won(digits(e.target.value)) : "" })} placeholder="0" className="field text-right tabular-nums" aria-label={`상품 ${idx + 1} 공급가`} />
+                      <input inputMode="numeric" value={it.cost} onChange={(e) => setItem(it.key, { cost: e.target.value ? won(digits(e.target.value)) : "", amountsManual: true })} placeholder="0" className="field text-right tabular-nums" aria-label={`상품 ${n} 공급가`} />
                     </label>
                     <label className="flex items-center gap-2 text-xs text-ink-soft">
                       <span className="w-14 shrink-0">판매가<br />VAT별도</span>
-                      <input inputMode="numeric" value={it.sale} onChange={(e) => setItem(it.key, { sale: e.target.value ? won(digits(e.target.value)) : "" })} placeholder="0" className="field text-right tabular-nums" aria-label={`상품 ${idx + 1} 판매가`} />
+                      <input inputMode="numeric" value={it.sale} onChange={(e) => setItem(it.key, { sale: e.target.value ? won(digits(e.target.value)) : "", amountsManual: true })} placeholder="0" className="field text-right tabular-nums" aria-label={`상품 ${n} 판매가`} />
                     </label>
                     <label className="flex items-center gap-1 whitespace-nowrap text-xs text-ink-soft" title="제품비 같은 실비는 인센티브에서 뺍니다">
-                      <input type="checkbox" checked={it.excluded} onChange={(e) => setItem(it.key, { excluded: e.target.checked, excludedTouched: true })} aria-label={`상품 ${idx + 1} 인센티브 제외`} />
+                      <input type="checkbox" checked={it.excluded} onChange={(e) => setItem(it.key, { excluded: e.target.checked, excludedTouched: true })} aria-label={`상품 ${n} 인센티브 제외`} />
                       인센티브 제외
                     </label>
                     {!readOnly && items.length > 1 ? (
-                      <button type="button" onClick={() => setItems((xs) => xs.filter((x) => x.key !== it.key))} className="px-2 text-sm text-ink-soft hover:text-danger" aria-label={`상품 ${idx + 1} 지우기`}>삭제</button>
+                      <button type="button" onClick={() => setItems((xs) => xs.filter((x) => x.key !== it.key))} className="px-2 text-sm text-ink-soft hover:text-danger" aria-label={`상품 ${n} 지우기`}>삭제</button>
                     ) : <span />}
                   </div>
+                  <p className="text-xs text-ink-soft">
+                    {digits(it.sale) !== 0 && <>고객 입금액(VAT 포함) {won(Math.round(digits(it.sale) * 1.1))}원 · </>}
+                    {price ? (
+                      <>
+                        단가표: 1{price.unit_label}당 공급가 {won(price.cost_price)} / 판매가 {won(price.sale_price)}
+                        {it.amountsManual && !readOnly && (
+                          <button type="button" className="ml-2 text-brand underline" onClick={() => setItem(it.key, { amountsManual: false })}>단가표 금액으로 다시 계산</button>
+                        )}
+                      </>
+                    ) : it.type && partnerId ? (
+                      "단가표에 없는 조합 · 금액을 직접 입력하세요"
+                    ) : null}
+                  </p>
                 </div>
-              ))}
+                );
+              })}
             </div>
             {!readOnly && (
               <button type="button" onClick={() => setItems((xs) => [...xs, blank()])} className="btn btn-ghost mt-3">+ 상품 줄 추가</button>
@@ -280,6 +411,7 @@ export function ViralOrderForm({
             <span className="mr-auto text-xs text-ink-soft">상품 {items.length}줄 · 공급가 합계 {won(totalCost)}원 (VAT 별도 {won(costNet)}원)</span>
             <span className="text-ink-soft">판매가 합계</span>
             <span className="font-bold tabular-nums">{won(totalSale)}원</span>
+            <span className="text-xs text-ink-soft">(VAT 포함 {won(Math.round(totalSale * 1.1))}원)</span>
             <span className="text-ink-soft">마진</span>
             <span className={`text-lg font-bold tabular-nums ${margin < 0 ? "text-danger" : ""}`}>{won(margin)}원</span>
             {totalSale > 0 && <span className="text-xs text-ink-soft">({Math.round((margin / totalSale) * 100)}%)</span>}
@@ -347,6 +479,87 @@ export function ViralStatusForm({ action, initial, readOnly }: { action: Action;
       </fieldset>
       <Message state={state} />
       {!readOnly && <button className="btn btn-ghost" disabled={pending}>{pending ? "저장 중…" : "상태 저장"}</button>}
+    </form>
+  );
+}
+
+// 환불 · 미소진 기록 추가
+export function CreditForm({ action, items }: { action: Action; items: { id: string; label: string }[] }) {
+  const [state, formAction, pending] = useActionState(action, { error: "" });
+  const [entry, setEntry] = useState("refund_issued");
+  const [amount, setAmount] = useState("");
+  return (
+    <form action={formAction} className="space-y-2 text-sm">
+      <select name="entry" value={entry} onChange={(e) => setEntry(e.target.value)} className="field" aria-label="기록 종류">
+        <optgroup label="환불 (작업 미흡 등으로 돌려줄 금액)">
+          <option value="refund_issued">환불 발생 — 돌려줄 금액이 생김</option>
+          <option value="refund_paid">환급 지급 — 고객에게 돌려줌</option>
+          <option value="refund_applied">다음 건에서 차감 — 이번에 덜 받음</option>
+        </optgroup>
+        <optgroup label="미소진 (판매가보다 더 받아 둔 금액)">
+          <option value="prepaid_received">미소진 발생 — 판매가보다 더 받음</option>
+          <option value="prepaid_used">미소진 사용 — 서비스 작업 등에 씀</option>
+        </optgroup>
+      </select>
+      <div className="grid grid-cols-2 gap-2">
+        <input
+          name="amount"
+          inputMode="numeric"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value ? won(Math.abs(digits(e.target.value))) : "")}
+          placeholder="금액 (VAT 별도)"
+          className="field text-right tabular-nums"
+          aria-label="금액 (VAT 별도)"
+        />
+        <input name="occurred_on" type="date" defaultValue={todayKST()} className="field" aria-label="날짜" />
+      </div>
+      {entry === "refund_issued" && (
+        <>
+          {items.length > 1 && (
+            <select name="item_id" defaultValue="" className="field" aria-label="환불 상품">
+              <option value="">건 전체</option>
+              {items.map((i) => <option key={i.id} value={i.id}>{i.label}</option>)}
+            </select>
+          )}
+          <input name="partner_refund" inputMode="numeric" placeholder="협력사에서 돌려받는 금액 (VAT 포함, 없으면 비움)" className="field text-right" aria-label="협력사 환불 금액" />
+        </>
+      )}
+      <input name="memo" placeholder={entry.startsWith("prepaid") ? "예: 리뷰 10건 서비스 진행" : "예: 순위 미달 5일분"} className="field" aria-label="메모" />
+      <button className="btn btn-ghost w-full" disabled={pending}>{pending ? "…" : "기록 추가"}</button>
+      <Message state={state} />
+    </form>
+  );
+}
+
+// 단가 한 줄 추가·수정
+export function PriceForm({ action, partners, initial, submitLabel }: {
+  action: Action;
+  partners: { id: string; name: string }[];
+  initial?: Partial<PriceRow> & { memo?: string | null };
+  submitLabel: string;
+}) {
+  const [state, formAction, pending] = useActionState(action, { error: "" });
+  return (
+    <form action={formAction} className="space-y-1">
+      <div className="grid gap-2 sm:grid-cols-4 lg:grid-cols-[1fr_1.3fr_0.8fr_1fr_0.6fr_0.6fr_1fr_1fr_auto]">
+        <select name="partner_id" defaultValue={initial?.partner_id ?? ""} className="field" aria-label="협력사" required>
+          <option value="">협력사</option>
+          {partners.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <select name="product_type" defaultValue={initial?.product_type ?? ""} className="field" aria-label="상품 종류" required>
+          <option value="">상품 종류</option>
+          {PRODUCT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <input name="platform" defaultValue={initial?.platform ?? ""} placeholder="매체(공통)" list="price-platforms" className="field" aria-label="매체" />
+        <input name="product_name" defaultValue={initial?.product_name ?? ""} placeholder="상품명(공통)" className="field" aria-label="협력사 상품명" />
+        <input name="days" inputMode="numeric" defaultValue={initial?.days ?? ""} placeholder="일수" className="field text-right" aria-label="일수" />
+        <input name="unit_label" defaultValue={initial?.unit_label ?? ""} placeholder="단위" className="field" aria-label="단위 (슬롯·건)" />
+        <input name="cost_price" inputMode="numeric" defaultValue={initial?.cost_price ?? ""} placeholder="공급가 VAT포함" className="field text-right" aria-label="1개당 공급가 (VAT 포함)" required />
+        <input name="sale_price" inputMode="numeric" defaultValue={initial?.sale_price ?? ""} placeholder="판매가 VAT별도" className="field text-right" aria-label="1개당 판매가 (VAT 별도)" required />
+        <button className="btn btn-ghost" disabled={pending}>{pending ? "…" : submitLabel}</button>
+      </div>
+      <datalist id="price-platforms">{PLATFORMS.map((m) => <option key={m} value={m} />)}</datalist>
+      <Message state={state} />
     </form>
   );
 }
