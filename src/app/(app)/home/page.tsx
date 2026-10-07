@@ -3,6 +3,7 @@ import { todayKST } from "@/lib/billing-calc";
 import { followUp } from "@/lib/leads";
 import { loadOpenLeads } from "@/lib/leads-data";
 import { canViewCost, getMe } from "@/lib/supabase/server";
+import { kstTime } from "@/lib/attendance";
 
 const won = (n: number) => Math.round(n).toLocaleString("ko-KR");
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
@@ -37,7 +38,7 @@ export default async function Home() {
   const to = nextMonth(ym);
 
   const settle = supabase.from("billing_documents").select("id,doc_type,status,total_amount,payment_received,staff_id,recipient_company_name,document_date");
-  const [open, { data: docs }, { data: contracts }, { data: viral }, { data: unpaidViral }, stmts] = await Promise.all([
+  const [open, { data: docs }, { data: contracts }, { data: viral }, { data: unpaidViral }, stmts, { data: att }, attWait] = await Promise.all([
     loadOpenLeads(supabase),
     isManager ? settle.in("status", ["requested", "lead_approved", "approved", "issued", "rejected"]).limit(1000) : settle.eq("staff_id", me.id).in("status", ["draft", "rejected", "approved", "issued"]).limit(1000),
     supabase.from("contracts").select("id,status,staff_id,client:clients(company_name)").in("status", ["draft", "signing", "rejected"]).limit(500),
@@ -46,6 +47,14 @@ export default async function Home() {
     showCost
       ? supabase.from("viral_partner_statements").select("id,amount,paid,invoice_done")
       : Promise.resolve({ data: [] as { id: string; amount: number; paid: boolean; invoice_done: boolean }[] }),
+    supabase.from("attendance_records").select("clock_in,clock_out,is_late,attendance_status").eq("staff_id", me.id).eq("work_date", today).maybeSingle(),
+    isManager
+      ? Promise.all([
+          supabase.from("leave_requests").select("id", { count: "exact", head: true }).or("status.in.(pending,first_approved),cancel_status.not.is.null"),
+          supabase.from("attendance_exceptions").select("id", { count: "exact", head: true }).eq("status", "pending"),
+          supabase.from("attendance_correction_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
+        ]).then((r) => r.reduce((t, x) => t + (x.count ?? 0), 0))
+      : Promise.resolve(0),
   ]);
 
   // 연락이 필요한 문의 (직원은 본인 담당 + 미배정, 대표·팀장은 전체)
@@ -84,6 +93,24 @@ export default async function Home() {
         <p className="text-sm text-ink-soft">{day}</p>
         <h1 className="text-2xl font-bold">{me.name}님, 오늘 할 일</h1>
       </header>
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-bold text-ink-soft">근태</h2>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Link href="/attendance" className="glass block p-4 transition hover:-translate-y-0.5">
+            <p className="text-xs text-ink-soft">오늘 내 출퇴근</p>
+            <p className="mt-1 text-2xl font-bold tabular-nums">
+              {att?.clock_in ? `${kstTime(att.clock_in)} ~ ${kstTime(att.clock_out) || ""}` : att ? "출근 기록 없음" : "출근 전"}
+            </p>
+            <p className="mt-0.5 text-xs text-ink-soft">{att?.is_late ? "지각 · " : ""}{att?.clock_in ? (att.clock_out ? "퇴근 완료" : "근무 중") : "근태 화면에서 출근하기"}</p>
+          </Link>
+          {isManager && <Todo href="/attendance/approvals" label="근태 결재 대기 (휴가·예외·수정)" count={attWait} />}
+          <Link href="/attendance/calendar" className="glass block p-4 transition hover:-translate-y-0.5">
+            <p className="text-xs text-ink-soft">근태 달력</p>
+            <p className="mt-1 text-sm font-semibold">누가 언제 쉬는지 보기 →</p>
+          </Link>
+        </div>
+      </section>
 
       <section className="space-y-2">
         <h2 className="text-sm font-bold text-ink-soft">인입 문의</h2>

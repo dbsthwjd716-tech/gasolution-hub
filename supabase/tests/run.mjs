@@ -9,6 +9,7 @@ const suites = [
   ['3단계 정산·계약', './billing.test.mjs'],
   ['4단계 인입 CRM', './leads.test.mjs'],
   ['예전 CRM 옮기기', './leads-import.test.mjs'],
+  ['근태·연차', './attendance.test.mjs'],
 ];
 let failed = 0;
 for (const [name, file] of suites) {
