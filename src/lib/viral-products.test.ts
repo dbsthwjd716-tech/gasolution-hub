@@ -67,3 +67,10 @@ test("시트 판매가가 0.7 규칙 금액이면 VAT 포함으로 보고 VAT �
   assert.equal(sheetSaleToNet(176000, 251400), 228545);
   assert.equal(sheetSaleToNet(145200, 396000), 396000);
 });
+
+test("단가표 판매가가 VAT 포함이면 수량을 곱한 뒤 VAT 별도로 (최적화 배포 78,570 × 10건)", () => {
+  const a = lineAmounts({ cost_price: 55000, sale_price: 78570, sale_includes_vat: true }, 10);
+  assert.equal(a.sale, 714273);
+  assert.equal(Math.round(a.sale * 1.1), 785700);
+  assert.equal(a.cost, 550000);
+});

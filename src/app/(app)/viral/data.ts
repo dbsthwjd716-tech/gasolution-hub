@@ -35,7 +35,7 @@ export async function loadActiveStaff(supabase: SupabaseClient) {
 // 협력사 단가표 (입력 화면 자동 계산용)
 export async function loadPrices(supabase: SupabaseClient): Promise<PriceRow[]> {
   const [{ data }, { data: costs }] = await Promise.all([
-    supabase.from("viral_price_list").select("id,partner_id,product_type,platform,product_name,days,unit_label,sale_price").eq("is_active", true),
+    supabase.from("viral_price_list").select("id,partner_id,product_type,platform,product_name,days,unit_label,sale_price,sale_includes_vat").eq("is_active", true),
     // 공급가는 권한 있는 사람에게만 (권한 없으면 빈 결과)
     supabase.rpc("viral_price_costs"),
   ]);

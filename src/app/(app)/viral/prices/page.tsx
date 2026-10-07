@@ -20,7 +20,7 @@ export default async function ViralPrices() {
       <header>
         <h1 className="text-2xl font-bold">협력사 단가표</h1>
         <p className="text-sm text-ink-soft">
-          1개(슬롯·건)당 공급가(VAT 포함)와 판매가(VAT 별도). 바이럴 입력에서 협력사·상품·일수·수량을 고르면 이 표로 금액이 자동으로 들어갑니다.
+          1개(슬롯·건)당 공급가(VAT 포함)와 판매가(VAT 포함·별도 중 선택). 바이럴 입력에서 협력사·상품·일수·수량을 고르면 이 표로 금액이 자동으로 들어갑니다.
           매체·상품명·일수를 비워 두면 그 협력사·상품 종류의 공통 단가로 쓰입니다.
         </p>
       </header>
@@ -49,14 +49,14 @@ export default async function ViralPrices() {
               </div>
             ) : (
               <table className="w-full text-sm">
-                <thead className="text-left text-xs text-ink-soft"><tr><th className="py-1">상품</th><th>매체</th><th>상품명</th><th className="text-right">일수</th><th className="text-right">공급가(VAT포함)</th><th className="text-right">판매가(VAT별도)</th></tr></thead>
+                <thead className="text-left text-xs text-ink-soft"><tr><th className="py-1">상품</th><th>매체</th><th>상품명</th><th className="text-right">일수</th><th className="text-right">공급가(VAT포함)</th><th className="text-right">판매가</th></tr></thead>
                 <tbody>
                   {rows.map((r) => (
                     <tr key={r.id} className="border-t border-[var(--glass-border)]">
                       <td className="py-1">{r.product_type}</td><td>{r.platform ?? "공통"}</td><td>{r.product_name ?? "공통"}</td>
                       <td className="text-right">{r.days ? `${r.days}일` : "-"}</td>
                       <td className="text-right tabular-nums">{r.cost_price == null ? "-" : `${won(r.cost_price)}/${r.unit_label}`}</td>
-                      <td className="text-right tabular-nums">{won(r.sale_price)}/{r.unit_label}</td>
+                      <td className="text-right tabular-nums">{won(r.sale_price)}/{r.unit_label} <span className="text-xs text-ink-soft">({r.sale_includes_vat ? "VAT 포함" : "VAT 별도"})</span></td>
                     </tr>
                   ))}
                   {!rows.length && <tr><td colSpan={6} className="py-2 text-ink-soft">아직 단가가 없습니다.</td></tr>}

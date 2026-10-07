@@ -456,7 +456,9 @@ export async function savePrice(id: string | null, _p: FormState, f: FormData): 
   const product_type = s(f, "product_type");
   if (!partner_id || !product_type || !(PRODUCT_TYPES as readonly string[]).includes(product_type)) return { error: "협력사와 상품 종류를 골라 주세요." };
   const cost = money(f, "cost_price");
+  // 판매가 칸: VAT 포함인지 별도인지 함께 저장
   const sale = money(f, "sale_price");
+  const saleIncludesVat = s(f, "sale_vat_mode") === "included";
   if (cost === null || sale === null || Number.isNaN(cost) || Number.isNaN(sale) || cost < 0 || sale < 0) return { error: "공급가·판매가를 숫자로 입력해 주세요." };
   const daysRaw = s(f, "days");
   const days = daysRaw ? Number(daysRaw) : null;
@@ -470,6 +472,7 @@ export async function savePrice(id: string | null, _p: FormState, f: FormData): 
     unit_label: s(f, "unit_label") ?? (product_type === "슬롯" ? "슬롯" : "건"),
     cost_price: cost,
     sale_price: sale,
+    sale_includes_vat: saleIncludesVat,
     memo: s(f, "memo"),
   };
   const supabase = await createClient();

@@ -15,6 +15,7 @@ export type PriceRow = {
   unit_label: string;
   cost_price: number | null; // 공급가 보기 권한이 없으면 null
   sale_price: number;
+  sale_includes_vat?: boolean; // 판매가가 VAT 포함 금액이면 true
 };
 
 // 가장 잘 맞는 단가: 협력사·종류는 같아야 하고, 매체·상품명·일수는 정확히 맞는 쪽을 우선 (비어 있는 단가는 공통)
@@ -33,9 +34,11 @@ export function findPrice(list: PriceRow[], q: { partnerId: string; productType:
   return best;
 }
 
-export function lineAmounts(price: Pick<PriceRow, "cost_price" | "sale_price">, quantity: number) {
+// 줄 금액: 공급가(VAT 포함)·판매가(VAT 별도). 단가표 판매가가 VAT 포함이면 수량을 곱한 뒤 VAT를 뺌 (끝자리 오차 방지)
+export function lineAmounts(price: Pick<PriceRow, "cost_price" | "sale_price" | "sale_includes_vat">, quantity: number) {
   const q = Number(quantity) || 0;
-  return { cost: price.cost_price == null ? null : Math.round(price.cost_price * q), sale: Math.round(price.sale_price * q) };
+  const sale = price.sale_includes_vat ? Math.round((price.sale_price * q) / 1.1) : Math.round(price.sale_price * q);
+  return { cost: price.cost_price == null ? null : Math.round(price.cost_price * q), sale };
 }
 
 // 시작일 + 일수 → 끝나는 날 (시작일 포함: 10/4부터 30일 → 11/2)

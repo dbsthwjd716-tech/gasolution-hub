@@ -366,7 +366,10 @@ export function ViralOrderForm({
                         <input value={it.platform === "기타" ? "" : it.platform} onChange={(e) => setItem(it.key, { platform: e.target.value || "기타" })} placeholder="매체 이름" className="field" aria-label={`상품 ${n} 매체 직접 입력`} />
                       )}
                     </div>
-                    <input value={it.productName} onChange={(e) => setItem(it.key, { productName: e.target.value })} placeholder="협력사 상품명 (예: 메이크)" className="field" aria-label={`상품 ${n} 협력사 상품명`} />
+                    <input value={it.productName} onChange={(e) => setItem(it.key, { productName: e.target.value })} placeholder="협력사 상품명 (예: 메이크)" list={`names-${it.key}`} className="field" aria-label={`상품 ${n} 협력사 상품명`} />
+                    <datalist id={`names-${it.key}`}>
+                      {[...new Set(prices.filter((p) => p.partner_id === partnerId && (!it.type || p.product_type === it.type) && p.product_name).map((p) => p.product_name as string))].map((nm) => <option key={nm} value={nm} />)}
+                    </datalist>
                     <div className="flex gap-1">
                       <input inputMode="decimal" value={it.qty} onChange={(e) => setItem(it.key, { qty: e.target.value.replace(/[^\d.]/g, "") })} placeholder={isSlot ? "슬롯 수" : "수량(건)"} className="field text-right" aria-label={`상품 ${n} 수량`} />
                       <span className="self-center whitespace-nowrap text-xs text-ink-soft">{isSlot ? "슬롯" : "건"}</span>
@@ -426,7 +429,7 @@ export function ViralOrderForm({
                     )}
                     {price ? (
                       <>
-                        단가표: 1{price.unit_label}당 {price.cost_price != null && <>공급가 {won(price.cost_price)} / </>}판매가 {won(price.sale_price)}
+                        단가표: 1{price.unit_label}당 {price.cost_price != null && <>공급가 {won(price.cost_price)} / </>}판매가 {won(price.sale_price)}({price.sale_includes_vat ? "VAT 포함" : "VAT 별도"})
                         {it.amountsManual && !readOnly && (
                           <button type="button" className="ml-2 text-brand underline" onClick={() => setItem(it.key, { amountsManual: false })}>단가표 금액으로 다시 계산</button>
                         )}
@@ -581,7 +584,7 @@ export function PriceForm({ action, partners, initial, submitLabel }: {
   const [state, formAction, pending] = useActionState(action, { error: "" });
   return (
     <form action={formAction} className="space-y-1">
-      <div className="grid gap-2 sm:grid-cols-4 lg:grid-cols-[1fr_1.3fr_0.8fr_1fr_0.6fr_0.6fr_1fr_1fr_auto]">
+      <div className="grid gap-2 sm:grid-cols-4 lg:grid-cols-[1fr_1.2fr_0.7fr_1.4fr_0.5fr_0.5fr_0.9fr_1.4fr_auto]">
         <select name="partner_id" defaultValue={initial?.partner_id ?? ""} className="field" aria-label="협력사" required>
           <option value="">협력사</option>
           {partners.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -595,7 +598,13 @@ export function PriceForm({ action, partners, initial, submitLabel }: {
         <input name="days" inputMode="numeric" defaultValue={initial?.days ?? ""} placeholder="일수" className="field text-right" aria-label="일수" />
         <input name="unit_label" defaultValue={initial?.unit_label ?? ""} placeholder="단위" className="field" aria-label="단위 (슬롯·건)" />
         <input name="cost_price" inputMode="numeric" defaultValue={initial?.cost_price ?? ""} placeholder="공급가 VAT포함" className="field text-right" aria-label="1개당 공급가 (VAT 포함)" required />
-        <input name="sale_price" inputMode="numeric" defaultValue={initial?.sale_price ?? ""} placeholder="판매가 VAT별도" className="field text-right" aria-label="1개당 판매가 (VAT 별도)" required />
+        <div className="flex gap-1">
+          <input name="sale_price" inputMode="numeric" defaultValue={initial?.sale_price ?? ""} placeholder="판매가" className="field text-right" aria-label="1개당 판매가" required />
+          <select name="sale_vat_mode" defaultValue={initial?.sale_includes_vat ? "included" : "excluded"} className="field w-24 px-1 text-xs" aria-label="판매가 VAT">
+            <option value="excluded">VAT 별도</option>
+            <option value="included">VAT 포함</option>
+          </select>
+        </div>
         <button className="btn btn-ghost" disabled={pending}>{pending ? "…" : submitLabel}</button>
       </div>
       <datalist id="price-platforms">{PLATFORMS.map((m) => <option key={m} value={m} />)}</datalist>
