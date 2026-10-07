@@ -215,7 +215,13 @@ export async function runViralImport(): Promise<ImportResult> {
       partner_paid: o.partnerPaid,
       partner_paid_amount: o.partnerPaidAmount,
       partner_invoice_amount: o.partnerInvoiceAmount,
-      memo: !sid ? `시트 담당자: ${o.managerLabel ?? o.manager} (직원 목록에 없음)` : o.managerLabel ? `시트 담당자 표기: ${o.managerLabel}` : null,
+      memo:
+        [
+          !sid ? `시트 담당자: ${o.managerLabel ?? o.manager} (직원 목록에 없음)` : o.managerLabel ? `시트 담당자 표기: ${o.managerLabel}` : null,
+          o.saleNote ? `시트 판매가 칸: ${o.saleNote}` : null,
+        ]
+          .filter(Boolean)
+          .join(" / ") || null,
       source_sheet: o.tab,
       source_row: o.row,
     };

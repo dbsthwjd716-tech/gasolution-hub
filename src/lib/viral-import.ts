@@ -39,6 +39,7 @@ export type PlannedOrder = {
   saleAmount: number;
   costAmount: number;
   manager: string;
+  saleNote: string | null; // 판매가 칸에 적혀 있던 설명
   managerLabel: string | null; // 시트에 적힌 담당자 표기가 이름과 다를 때 (예: "남지윤(파생)")
   paymentReceived: boolean;
   paymentNote: string | null;
@@ -147,6 +148,7 @@ type RawRow = {
   paidDate: string | null;
   unpaid: boolean; // 날짜 칸에 "입금전" 등
   saleRaw: string | null;
+  saleNote?: string | null;
   description: string | null;
   company: string | null;
   representative: string | null;
@@ -254,12 +256,20 @@ export function planViralImport(
       const skip = (kind: ProblemKind, message: string) => skipped.push({ tab, row: r.row, kind, message });
       if (!r.paidDate && !r.unpaid) return skip("missing_date", "입금날짜를 읽을 수 없습니다");
       if (!r.company) return skip("missing_company", "업체명이 없습니다");
-      if (r.sale === null && r.saleRaw) return skip("missing_amount", `판매가 '${r.saleRaw}'를 숫자로 읽을 수 없습니다`);
+      // 판매가 칸에 숫자 없이 설명만 있으면(예: "서비스 대응") 0원 서비스 건으로, 설명은 메모로
+      const saleNote = r.sale === null && r.saleRaw && !/\d/.test(r.saleRaw) ? r.saleRaw : null;
+      if (r.sale === null && r.saleRaw && !saleNote) return skip("missing_amount", `판매가 '${r.saleRaw}'를 숫자로 읽을 수 없습니다`);
+      r.saleNote = saleNote;
       if (!r.manager) return skip("missing_manager", "담당자가 없습니다");
       if (r.unpaid) warnings.push({ tab, row: r.row, kind: "unpaid", message: "입금날짜가 비어 있거나 '입금전'이라 입금 전 건으로 옮깁니다" });
       if (r.sale === null) {
         r.sale = 0;
-        warnings.push({ tab, row: r.row, kind: "no_sale_amount", message: "판매가가 비어 있어 0원으로 옮깁니다 (서비스 건)" });
+        warnings.push({
+          tab,
+          row: r.row,
+          kind: "no_sale_amount",
+          message: saleNote ? `판매가 칸에 '${saleNote}'라고 적혀 있어 0원 서비스 건으로 옮기고 내용은 메모에 남깁니다` : "판매가가 비어 있어 0원으로 옮깁니다 (서비스 건)",
+        });
       }
       if (r.sale < 0 || (r.cost ?? 0) < 0)
         warnings.push({ tab, row: r.row, kind: "negative_amount", message: "마이너스 금액입니다 (환불·취소 건으로 보임). 그대로 옮깁니다" });
@@ -345,6 +355,7 @@ export function planViralImport(
       saleAmount: r.sale!,
       costAmount: r.cost ?? 0,
       manager: r.manager!,
+      saleNote: r.saleNote ?? null,
       managerLabel: r.managerRaw && r.managerRaw !== r.manager ? r.managerRaw : null,
       paymentReceived: !r.unpaid && !!r.paymentNote && /입금|^o$/i.test(r.paymentNote),
       paymentNote: r.paymentNote,

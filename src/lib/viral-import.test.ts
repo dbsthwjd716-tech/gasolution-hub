@@ -158,3 +158,13 @@ test("퇴사 직원 '남지윤(파생)' 표기는 남지윤으로 연결하고 �
   assert.equal(p.orders[0].manager, "남지윤");
   assert.equal(p.orders[0].managerLabel, "남지윤(파생)");
 });
+
+test("판매가 칸에 숫자 없이 설명만 있으면 0원 서비스 건으로 옮기고 설명을 남김", () => {
+  const p = planViralImport({ 포에스: [row({ sale: "기존 부스팅 손해에 대한 서비스 대응" })] }, { managers: ["서진원"] });
+  assert.equal(p.orders.length, 1);
+  assert.equal(p.orders[0].saleAmount, 0);
+  assert.equal(p.orders[0].saleNote, "기존 부스팅 손해에 대한 서비스 대응");
+  // 숫자가 섞인 애매한 값은 여전히 확인 요청
+  const q = planViralImport({ 포에스: [row({ sale: "약 10만" })] }, { managers: ["서진원"] });
+  assert.equal(q.orders.length, 0);
+});
