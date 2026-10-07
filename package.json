@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:db": "node supabase/tests/rls.test.mjs"
+    "test:db": "node supabase/tests/run.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

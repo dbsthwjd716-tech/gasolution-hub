@@ -1,62 +1,8 @@
-// 권한 규칙 시험: 실제 Postgres(PGlite)에 Supabase 흉내(auth 스키마, 역할)를 만들고
-// 대표·팀장·직원·로그인 안 한 사람이 각각 무엇을 할 수 있는지 확인합니다.
-// 실행: node supabase/tests/rls.test.mjs
-import { readFileSync, readdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+// 1단계 권한 규칙 시험: 대표·팀장·직원·로그인 안 한 사람이 각각 무엇을 할 수 있는지 확인
+import { setup } from './_db.mjs';
 
-const { PGlite } = await import(process.env.PGLITE_PATH ?? '@electric-sql/pglite');
-const here = dirname(fileURLToPath(import.meta.url));
-const migDir = join(here, '..', 'migrations');
-
-const db = new PGlite();
-await db.exec(`
-  create role anon nologin; create role authenticated nologin;
-  create schema auth;
-  create table auth.users (id uuid primary key);
-  create function auth.uid() returns uuid language sql stable as
-    $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
-  grant usage on schema auth, public to anon, authenticated;
-  grant execute on function auth.uid() to anon, authenticated;
-  alter default privileges in schema public grant all on tables to anon, authenticated;
-  alter default privileges in schema public grant all on sequences to anon, authenticated;
-`);
-for (const f of readdirSync(migDir).filter((f) => f.endsWith('.sql')).sort()) {
-  await db.exec(readFileSync(join(migDir, f), 'utf8'));
-}
-
-const U = {
-  ceo: '00000000-0000-0000-0000-00000000000a',
-  lead: '00000000-0000-0000-0000-00000000000b',
-  kim: '00000000-0000-0000-0000-00000000000c',
-  lee: '00000000-0000-0000-0000-00000000000d',
-};
-await db.exec(`
-  insert into auth.users values ('${U.ceo}'),('${U.lead}'),('${U.kim}'),('${U.lee}');
-  insert into staff(auth_user_id,name,email,role) values
-   ('${U.ceo}','대표','ceo@x','ceo'),('${U.lead}','팀장','lead@x','lead'),
-   ('${U.kim}','김직원','kim@x','staff'),('${U.lee}','이직원','lee@x','staff');
-`);
-
-async function as(user, sql, params = []) {
-  await db.exec('reset role');
-  await db.query(`select set_config('request.jwt.claim.sub', $1, false)`, [user ? U[user] : '']);
-  await db.exec(user ? 'set role authenticated' : 'set role anon');
-  try { return await db.query(sql, params); } finally { await db.exec('reset role'); }
-}
-
-let pass = 0, fail = 0;
-async function expectOk(name, fn) {
-  try { const r = await fn(); pass++; console.log('  ✓', name); return r; }
-  catch (e) { fail++; console.log('  ✗', name, '→', e.message); }
-}
-async function expectBlocked(name, fn) {
-  try {
-    const r = await fn();
-    if (r && 'affectedRows' in r && r.affectedRows === 0) { pass++; console.log('  ✓', name, '(0건 처리)'); return; }
-    fail++; console.log('  ✗', name, '→ 막혀야 하는데 통과됨');
-  } catch (e) { pass++; console.log('  ✓', name, `(막힘: ${e.message.slice(0, 40)})`); }
-}
+export async function run() {
+const { db, as, expectOk, expectBlocked, finish } = await setup();
 
 console.log('사업자번호');
 await expectOk('지에이솔루션 347-88-02171 검증 통과', async () => {
@@ -147,5 +93,5 @@ await expectOk('퇴사 처리된 직원은 아무것도 못 봄', async () => {
   if (r.rows[0].n !== 0) throw new Error(String(r.rows[0].n));
 });
 
-console.log(`\n결과: ${pass}개 통과, ${fail}개 실패`);
-process.exit(fail ? 1 : 0);
+return finish();
+}
