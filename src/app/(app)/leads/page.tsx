@@ -67,6 +67,7 @@ export default async function LeadsPage(props: PageProps<"/leads">) {
         </div>
         <div className="flex gap-2">
           <Link href="/leads/stats" className="btn btn-ghost">통계</Link>
+          {me && me.role !== "staff" && <Link href="/leads/import" className="btn btn-ghost">예전 CRM 옮기기</Link>}
           <Link href="/leads/new" className="btn">문의 등록</Link>
         </div>
       </header>

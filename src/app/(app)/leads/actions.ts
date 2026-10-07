@@ -156,3 +156,23 @@ export async function linkLeadClient(id: string, _p: FormState, f: FormData): Pr
   if (s(f, "client_id") === "new") redirect(`/clients/${clientId}`);
   return { error: "", ok: "거래처에 연결했습니다." };
 }
+
+// ---------------------------------------------------------------- 예전 CRM에서 옮기기 (대표·팀장)
+export async function importLegacyLeads(_p: FormState, _f: FormData): Promise<FormState> {
+  const { supabase, me } = await getMe();
+  if (!me) redirect("/login");
+  if (me.role === "staff") return { error: "대표·팀장만 옮길 수 있습니다." };
+  const { fetchLegacyLeads } = await import("@/lib/legacy-crm");
+  const { data, error } = await fetchLegacyLeads();
+  if (error || !data) return { error: error ?? "예전 CRM에서 읽지 못했습니다." };
+  const { data: r, error: e } = await supabase.rpc("import_legacy_leads", { payload: data });
+  if (e) return { error: friendly(e.message) };
+  const res = r as { inserted: number; skipped: number; activities: number; created_staff: string[] };
+  revalidatePath("/leads");
+  revalidatePath("/leads/import");
+  return {
+    error: "",
+    ok: `새로 옮긴 문의 ${res.inserted}건 (상담·상태 기록 ${res.activities}개), 이미 옮긴 문의 ${res.skipped}건은 건너뜀.` +
+      (res.created_staff.length ? ` 퇴사 직원으로 추가: ${res.created_staff.join(", ")}` : ""),
+  };
+}

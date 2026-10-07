@@ -8,6 +8,7 @@ const suites = [
   ['5단계 급여', './payroll.test.mjs'],
   ['3단계 정산·계약', './billing.test.mjs'],
   ['4단계 인입 CRM', './leads.test.mjs'],
+  ['예전 CRM 옮기기', './leads-import.test.mjs'],
 ];
 let failed = 0;
 for (const [name, file] of suites) {
