@@ -115,9 +115,9 @@ export default async function ViralPage(props: PageProps<"/viral">) {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {[
           { label: "건수", value: `${rows.length}건` },
-          { label: "판매가 합계", value: `${won(sum("sale_amount"))}원` },
-          { label: "공급가 합계", value: `${won(sum("cost_amount"))}원` },
-          { label: "마진 합계", value: `${won(sum("margin_amount"))}원` },
+          { label: "판매가 합계 (VAT 별도)", value: `${won(sum("sale_amount"))}원` },
+          { label: "공급가 합계 (VAT 포함)", value: `${won(sum("cost_amount"))}원` },
+          { label: "마진 합계 (VAT 별도)", value: `${won(sum("margin_amount"))}원` },
         ].map((k) => (
           <div key={k.label} className="glass p-4">
             <p className="text-xs text-ink-soft">{k.label}</p>

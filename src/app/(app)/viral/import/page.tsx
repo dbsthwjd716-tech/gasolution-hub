@@ -64,7 +64,7 @@ export default async function ImportPage(props: PageProps<"/viral/import">) {
             {[
               { label: "시트 줄 수", value: `${plan.totals.rows}줄` },
               { label: "옮길 바이럴 건", value: `${plan.totals.orders}건` },
-              { label: "판매가 합계", value: `${won(plan.totals.saleAmount)}원` },
+              { label: "판매가 합계 (VAT 별도)", value: `${won(plan.totals.saleAmount)}원` },
               { label: "거래처", value: `${plan.clients.length}곳 (사업자번호 없음 ${plan.clients.filter((c) => !c.businessNumber).length})` },
             ].map((k) => (
               <div key={k.label} className="glass p-4">

@@ -87,7 +87,10 @@ test("이름이 같은데 올바른 사업자번호가 둘이면 같은 회사�
   assert.ok(p.warnings.some((w) => w.kind === "bizno_conflict"));
 });
 
-test("공급가가 판매가보다 크면 확인 요청", () => {
-  const p = planViralImport({ 제이솔: [row({ cost: "200,000", sale: "100,000" })] });
-  assert.ok(p.warnings.some((w) => w.kind === "cost_over_sale"));
+test("공급가(VAT 포함)를 VAT 별도로 환산해 판매가보다 크면 확인 요청", () => {
+  // 공급가 110,000(VAT 포함) = 100,000(VAT 별도) → 판매가 100,000이면 마진 0, 경고 없음
+  const ok = planViralImport({ 제이솔: [row({ cost: "110,000", sale: "100,000" })] });
+  assert.ok(!ok.warnings.some((w) => w.kind === "cost_over_sale"));
+  const bad = planViralImport({ 제이솔: [row({ cost: "121,000", sale: "100,000" })] });
+  assert.ok(bad.warnings.some((w) => w.kind === "cost_over_sale"));
 });

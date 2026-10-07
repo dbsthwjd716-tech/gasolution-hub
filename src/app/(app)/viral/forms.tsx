@@ -96,7 +96,9 @@ export function ViralOrderForm({
   const [cost, setCost] = useState(initial.cost_amount != null ? won(initial.cost_amount) : "");
   const [sale, setSale] = useState(initial.sale_amount != null ? won(initial.sale_amount) : "");
   const client = clients.find((c) => c.id === clientId);
-  const margin = digits(sale) - digits(cost);
+  // 판매가는 VAT 별도, 공급가는 VAT 포함 → 공급가에서 VAT를 빼고 비교 (데이터베이스 계산과 같음)
+  const costNet = Math.round(digits(cost) / 1.1);
+  const margin = digits(sale) - costNet;
 
   const matches = useMemo(() => {
     const n = norm(q);
@@ -198,11 +200,12 @@ export function ViralOrderForm({
             <input id="cost_amount" name="cost_amount" inputMode="numeric" value={cost} onChange={(e) => setCost(e.target.value ? won(digits(e.target.value)) : "")} className="field text-right tabular-nums" />
           </div>
           <div>
-            <label className="label" htmlFor="sale_amount">판매가 (고객 안내 금액) *</label>
+            <label className="label" htmlFor="sale_amount">판매가 (고객 안내 금액, VAT 별도) *</label>
             <input id="sale_amount" name="sale_amount" inputMode="numeric" required value={sale} onChange={(e) => setSale(e.target.value ? won(digits(e.target.value)) : "")} className="field text-right tabular-nums" />
           </div>
-          <div className="md:col-span-2 flex items-center justify-end gap-2 text-sm">
-            <span className="text-ink-soft">마진</span>
+          <div className="md:col-span-2 flex flex-wrap items-center justify-end gap-2 text-sm">
+            {digits(cost) > 0 && <span className="mr-auto text-xs text-ink-soft">공급가 VAT 별도 {won(costNet)}원</span>}
+            <span className="text-ink-soft">마진 (VAT 별도)</span>
             <span className={`text-lg font-bold tabular-nums ${margin < 0 ? "text-danger" : ""}`}>{won(margin)}원</span>
             {digits(sale) > 0 && <span className="text-xs text-ink-soft">({Math.round((margin / digits(sale)) * 100)}%)</span>}
           </div>

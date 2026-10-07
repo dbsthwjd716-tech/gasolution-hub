@@ -13,10 +13,11 @@ export async function run() {
   console.log('바이럴 등록');
   const o = await expectOk('김직원이 거래처를 골라 바이럴 건 등록', () =>
     as('kim', `insert into viral_orders(client_id,partner_id,paid_date,description,cost_amount,sale_amount)
-       values ($1,$2,'2026-10-07','블로그리뷰 30건',59400,132000) returning id, staff_id, margin_amount`, [c1, pid]));
+       values ($1,$2,'2026-10-07','블로그리뷰 30건',59400,132000) returning id, staff_id, margin_amount, cost_net_amount`, [c1, pid]));
   const oid = o.rows[0].id;
-  await expectOk('마진 자동 계산 (132,000 - 59,400 = 72,600)', async () => {
-    if (Number(o.rows[0].margin_amount) !== 72600) throw new Error(String(o.rows[0].margin_amount));
+  await expectOk('마진은 VAT 별도 기준: 판매가 132,000 - 공급가 59,400÷1.1(54,000) = 78,000', async () => {
+    if (Number(o.rows[0].cost_net_amount) !== 54000) throw new Error('공급가(VAT 별도) ' + o.rows[0].cost_net_amount);
+    if (Number(o.rows[0].margin_amount) !== 78000) throw new Error('마진 ' + o.rows[0].margin_amount);
   });
   await expectOk('등록한 직원이 담당자로 자동 지정', async () => {
     const r = await db.query(`select name from staff where id=$1`, [o.rows[0].staff_id]);

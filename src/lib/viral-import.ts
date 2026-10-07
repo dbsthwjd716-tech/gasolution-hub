@@ -4,7 +4,7 @@
 //
 // 시트 칸 순서 (2행부터 데이터):
 //   A 번호 | B 시작날짜(입금날짜) | C 기간·내용 | D 업체명 | E 대표자 | F 사업자번호 | G 주소
-//   H 세금계산서 발행메일 | I 사업자등록증 첨부 | J 공급가(협력사 견적, VAT 포함) | K 판매가
+//   H 세금계산서 발행메일 | I 사업자등록증 첨부 | J 공급가(협력사 견적, VAT 포함) | K 판매가(VAT 별도)
 //   L 담당자 | M 입금여부 | N 세금계산서발행여부 | O 협력사결제여부 | P 협력사에 입금한 금액
 //   Q 협력사 세금계산서 발행금액
 // 탭에 따라 칸이 한 칸 밀린 경우가 있어서, 날짜 칸 위치를 기준으로 나머지 칸을 찾는다.
@@ -258,8 +258,9 @@ export function planViralImport(
     c.orderCount++;
     clients.set(key, c);
 
-    if (r.cost !== null && r.sale !== null && r.cost > r.sale)
-      warnings.push({ tab: r.tab, row: r.row, kind: "cost_over_sale", message: "공급가가 판매가보다 큽니다 (마진 마이너스)" });
+    // 공급가는 VAT 포함, 판매가는 VAT 별도 → 공급가에서 VAT를 뺀 금액과 비교
+    if (r.cost !== null && r.sale !== null && Math.round(r.cost / 1.1) > r.sale)
+      warnings.push({ tab: r.tab, row: r.row, kind: "cost_over_sale", message: "공급가(VAT 별도로 환산)가 판매가보다 큽니다 (마진 마이너스)" });
 
     orders.push({
       tab: r.tab,

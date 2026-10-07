@@ -1,7 +1,7 @@
 -- 2단계: 바이럴
 -- 원칙
 --   * 바이럴 건은 반드시 거래처를 가리킴 → 대표자·사업자번호·주소·메일·사업자등록증은 거래처에서 자동으로 가져옴
---   * 마진은 판매가 - 공급가로 자동 계산
+--   * 마진은 VAT 별도 기준으로 자동 계산: 판매가(VAT 별도) - 공급가(VAT 포함)÷1.1
 --   * 세 가지 진행 상태를 따로 관리: 고객 입금 / 세금계산서 / 협력사 결제
 --   * 직원은 모든 건을 보고 등록. 수정은 본인 담당 건, 대표·팀장은 전부. 삭제는 대표만
 
@@ -31,9 +31,11 @@ create table public.viral_orders (
   end_date          date,
   description       text,                                       -- 기간·상품 내용 (예: 플레이스 최적화, 블로그리뷰 50건)
 
+  -- 금액 기준이 서로 다름: 공급가는 VAT 포함, 판매가는 VAT 별도 (인센티브·실적도 VAT 별도로 계산)
   cost_amount       bigint not null default 0 check (cost_amount >= 0),   -- 공급가: 협력사 견적(VAT 포함)
-  sale_amount       bigint not null check (sale_amount >= 0),             -- 판매가: 고객에게 안내한 금액
-  margin_amount     bigint generated always as (sale_amount - cost_amount) stored,
+  sale_amount       bigint not null check (sale_amount >= 0),             -- 판매가: 고객에게 안내한 금액(VAT 별도)
+  cost_net_amount   bigint generated always as (round(cost_amount / 1.1)::bigint) stored,   -- 공급가에서 VAT를 뺀 금액
+  margin_amount     bigint generated always as (sale_amount - round(cost_amount / 1.1)::bigint) stored, -- 마진(VAT 별도 기준)
 
   -- 고객 입금
   payment_received  boolean not null default false,
