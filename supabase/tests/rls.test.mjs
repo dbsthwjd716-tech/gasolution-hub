@@ -93,5 +93,21 @@ await expectOk('퇴사 처리된 직원은 아무것도 못 봄', async () => {
   if (r.rows[0].n !== 0) throw new Error(String(r.rows[0].n));
 });
 
+console.log('로그인 계정 자동 연결');
+// 실제로는 대표가 Supabase 관리 화면에서 계정을 만듦 → 로그인한 직원 정보 없이 실행됨
+await db.query(`select set_config('request.jwt.claim.sub', '', false)`);
+await expectOk('직원 먼저 등록 → 같은 이메일로 로그인 계정을 만들면 자동 연결', async () => {
+  await db.exec(`insert into staff(name,email,role) values ('신입','New@x','staff')`);
+  await db.exec(`insert into auth.users(id,email) values ('00000000-0000-0000-0000-0000000000e1','new@x')`);
+  const r = await db.query(`select auth_user_id from staff where name='신입'`);
+  if (r.rows[0].auth_user_id !== '00000000-0000-0000-0000-0000000000e1') throw new Error(String(r.rows[0].auth_user_id));
+});
+await expectOk('로그인 계정 먼저 → 나중에 직원 등록해도 자동 연결', async () => {
+  await db.exec(`insert into auth.users(id,email) values ('00000000-0000-0000-0000-0000000000e2','later@x')`);
+  await db.exec(`insert into staff(name,email,role) values ('나중','later@x','staff')`);
+  const r = await db.query(`select auth_user_id from staff where name='나중'`);
+  if (r.rows[0].auth_user_id !== '00000000-0000-0000-0000-0000000000e2') throw new Error(String(r.rows[0].auth_user_id));
+});
+
 return finish();
 }
