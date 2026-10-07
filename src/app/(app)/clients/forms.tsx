@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { FileUpload } from "@/components/file-upload";
 import { checkBizNo, formatBizNo } from "@/lib/bizno";
 import type { FormState } from "./actions";
 
@@ -149,6 +150,24 @@ export function InlineForm({
           {pending ? "…" : submitLabel}
         </button>
       </div>
+      <Message state={state} />
+    </form>
+  );
+}
+
+// 사업자등록증·통장사본 올리기
+export function DocumentUploadForm({ action }: { action: Action }) {
+  const [state, formAction, pending] = useActionState(action, { error: "" });
+  const [busy, setBusy] = useState(false);
+  return (
+    <form action={formAction} className="space-y-2">
+      <select name="document_type" className="field" aria-label="서류 종류" defaultValue="business_registration">
+        <option value="business_registration">사업자등록증</option>
+        <option value="bank_account">통장 사본</option>
+        <option value="other">기타</option>
+      </select>
+      <FileUpload name="files" folder="clients/documents" onBusyChange={setBusy} />
+      <button className="btn btn-ghost" disabled={pending || busy}>{pending ? "…" : "등록"}</button>
       <Message state={state} />
     </form>
   );

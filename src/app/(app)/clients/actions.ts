@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { checkBizNo } from "@/lib/bizno";
 import { createClient } from "@/lib/supabase/server";
+import { parseUploaded } from "@/lib/uploads";
 
 export type FormState = { error: string; ok?: string };
 
@@ -137,4 +138,20 @@ export async function addAlias(clientId: string, _p: FormState, f: FormData): Pr
   if (error) return { error: friendly(error.message, error.code) };
   revalidatePath(`/clients/${clientId}`);
   return { error: "", ok: "추가했습니다." };
+}
+
+// 사업자등록증 등 서류 등록 (파일은 화면에서 보관함에 먼저 올라감)
+export async function addClientDocument(clientId: string, _p: FormState, f: FormData): Promise<FormState> {
+  const files = parseUploaded(f.get("files"), "clients/documents");
+  if (!files.length) return { error: "파일을 골라 주세요." };
+  const type = s(f, "document_type") ?? "business_registration";
+  if (!["business_registration", "bank_account", "other"].includes(type)) return { error: "서류 종류를 골라 주세요." };
+  const supabase = await createClient();
+  const { data: me } = await supabase.rpc("my_staff_id");
+  const { error } = await supabase.from("client_documents").insert(
+    files.map((x) => ({ client_id: clientId, document_type: type, file_name: x.name, storage_path: x.path, mime_type: x.type, file_size: x.size, uploaded_by: me })),
+  );
+  if (error) return { error: friendly(error.message, error.code) };
+  revalidatePath(`/clients/${clientId}`);
+  return { error: "", ok: "올렸습니다." };
 }

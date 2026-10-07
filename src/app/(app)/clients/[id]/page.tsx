@@ -2,8 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { formatBizNo } from "@/lib/bizno";
 import { createClient } from "@/lib/supabase/server";
-import { addAccount, addAlias, addBrand, addContact, updateClientRecord } from "../actions";
-import { ClientForm, InlineForm } from "../forms";
+import { CONTRACT_STATUS, markupText, statusLabel, won } from "@/lib/billing-calc";
+import { signedLinks } from "@/lib/storage";
+import { addAccount, addAlias, addBrand, addClientDocument, addContact, updateClientRecord } from "../actions";
+import { ClientForm, DocumentUploadForm, InlineForm } from "../forms";
 
 const PLATFORM_LABEL: Record<string, string> = {
   naver_searchad: "네이버 검색광고",
@@ -32,7 +34,7 @@ export default async function ClientDetail(props: PageProps<"/clients/[id]">) {
     supabase
       .from("clients")
       .select(
-        "*, owner:staff!clients_owner_staff_id_fkey(name), brands(id,name,is_active,media_accounts(id,platform,external_id,account_name,transferred_at,is_active,media_account_assignments(valid_to,staff(name)))), client_contacts(id,name,role_label,phone,email), name_aliases(id,alias,source)",
+        "*, owner:staff!clients_owner_staff_id_fkey(name), brands(id,name,is_active,media_accounts(id,platform,external_id,account_name,transferred_at,is_active,media_account_assignments(valid_to,staff(name)))), client_contacts(id,name,role_label,phone,email), name_aliases(id,alias,source), client_documents(id,document_type,file_name,storage_path,created_at), contracts(id,status,markup_type,markup_rate,markup_fixed,start_date,end_date), billing_documents(id,doc_type,status,document_date,total_amount)",
       )
       .eq("id", id)
       .maybeSingle(),
@@ -43,6 +45,13 @@ export default async function ClientDetail(props: PageProps<"/clients/[id]">) {
   const brands = (c.brands ?? []) as { id: string; name: string; is_active: boolean; media_accounts: Account[] }[];
   const contacts = (c.client_contacts ?? []) as { id: string; name: string; role_label: string | null; phone: string | null; email: string | null }[];
   const aliases = (c.name_aliases ?? []) as { id: string; alias: string; source: string }[];
+  const docs = (c.client_documents ?? []) as { id: string; document_type: string; file_name: string; storage_path: string }[];
+  const contracts = (c.contracts ?? []) as { id: string; status: string; markup_type: "rate" | "fixed" | "none"; markup_rate: number; markup_fixed: number; start_date: string | null; end_date: string | null }[];
+  const bills = ((c.billing_documents ?? []) as { id: string; doc_type: "settlement"; status: "draft"; document_date: string; total_amount: number }[])
+    .sort((a, b) => b.document_date.localeCompare(a.document_date))
+    .slice(0, 8);
+  const links = await signedLinks(supabase, docs.map((d) => d.storage_path));
+  const DOC_LABEL: Record<string, string> = { business_registration: "사업자등록증", bank_account: "통장 사본", other: "기타" };
 
   return (
     <div className="space-y-4">
@@ -114,6 +123,46 @@ export default async function ClientDetail(props: PageProps<"/clients/[id]">) {
                 )}
               </div>
             )}
+          </section>
+
+          <section className="glass p-5">
+            <h2 className="mb-3 font-bold">서류</h2>
+            <ul className="space-y-1 text-sm">
+              {docs.map((d) => (
+                <li key={d.id} className="flex items-center gap-2">
+                  <span className="chip chip-muted">{DOC_LABEL[d.document_type] ?? d.document_type}</span>
+                  {links[d.storage_path] ? <a href={links[d.storage_path]} target="_blank" rel="noreferrer" className="truncate text-brand underline">{d.file_name}</a> : <span className="truncate">{d.file_name}</span>}
+                </li>
+              ))}
+              {!docs.some((d) => d.document_type === "business_registration") && <li className="text-[var(--warn-ink)]">사업자등록증이 없습니다. 세금계산서 발행 전에 올려 주세요.</li>}
+            </ul>
+            {canEdit && <div className="mt-4 border-t border-[var(--glass-border)] pt-4"><DocumentUploadForm action={addClientDocument.bind(null, id)} /></div>}
+          </section>
+
+          <section className="glass p-5">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-bold">계약 · 정산</h2>
+              <div className="flex gap-3 text-sm">
+                <Link href={`/contracts/new?client=${id}`} className="text-brand underline">계약 등록</Link>
+                <Link href={`/billing/new?type=settlement&client=${id}`} className="text-brand underline">정산서</Link>
+                <Link href={`/billing/new?type=viral_estimate&client=${id}`} className="text-brand underline">견적서</Link>
+              </div>
+            </div>
+            <ul className="space-y-1 text-sm">
+              {contracts.map((k) => (
+                <li key={k.id} className="flex items-center gap-2">
+                  <span className={`chip ${CONTRACT_STATUS[k.status]?.cls}`}>{CONTRACT_STATUS[k.status]?.label}</span>
+                  <Link href={`/contracts/${k.id}`} className="hover:text-brand">계약 {markupText(k.markup_type, k.markup_rate, k.markup_fixed)} · {k.start_date ?? "?"} ~ {k.end_date ?? ""}</Link>
+                </li>
+              ))}
+              {bills.map((b) => (
+                <li key={b.id} className="flex items-center justify-between gap-2">
+                  <Link href={`/billing/${b.id}`} className="hover:text-brand">{b.document_date} · {statusLabel(b.doc_type, b.status)}</Link>
+                  <span className="tabular-nums">{won(b.total_amount)}</span>
+                </li>
+              ))}
+              {!contracts.length && !bills.length && <li className="text-ink-soft">아직 없습니다.</li>}
+            </ul>
           </section>
 
           <section className="glass p-5">

@@ -2,6 +2,7 @@
 const suites = [
   ['1단계 거래처·권한', './rls.test.mjs'],
   ['2단계 바이럴', './viral.test.mjs'],
+  ['3단계 정산·계약', './billing.test.mjs'],
 ];
 let failed = 0;
 for (const [name, file] of suites) {

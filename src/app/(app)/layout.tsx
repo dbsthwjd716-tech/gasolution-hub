@@ -7,6 +7,8 @@ import { signOut } from "../login/actions";
 const NAV = [
   { href: "/clients", label: "거래처" },
   { href: "/viral", label: "바이럴" },
+  { href: "/contracts", label: "계약" },
+  { href: "/billing", label: "정산 · 견적" },
 ];
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
