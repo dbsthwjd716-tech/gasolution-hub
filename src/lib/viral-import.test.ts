@@ -61,7 +61,7 @@ test("칸이 한 칸 밀린 탭도 날짜 위치로 맞춰 읽음 (애드매니�
 
 test("필수 칸이 빠진 줄은 건너뛰고 이유를 남김, 빈 줄은 무시", () => {
   const p = planViralImport({
-    포에스: [row({ date: "날짜확인중" }), row({ company: "" }), row({ sale: "미정" }), row({ mgr: "" }), Array(17).fill("")],
+    포에스: [row({ date: "날짜확인중" }), row({ company: "" }), row({ sale: "약 10만" }), row({ mgr: "" }), Array(17).fill("")],
   });
   assert.equal(p.orders.length, 0);
   assert.deepEqual(p.skipped.map((s) => s.kind), ["missing_date", "missing_company", "missing_amount", "missing_manager"]);
