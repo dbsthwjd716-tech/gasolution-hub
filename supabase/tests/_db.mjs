@@ -23,8 +23,7 @@ export async function setup() {
       $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
     grant usage on schema auth, public to anon, authenticated;
     grant execute on function auth.uid() to anon, authenticated;
-    alter default privileges in schema public grant all on tables to anon, authenticated;
-    alter default privileges in schema public grant all on sequences to anon, authenticated;
+    -- 새 Supabase 프로젝트와 같게: 표를 만들어도 자동으로 권한을 주지 않음 (migration이 직접 줘야 함)
   `);
   for (const f of readdirSync(migDir).filter((f) => f.endsWith('.sql')).sort()) {
     await db.exec(readFileSync(join(migDir, f), 'utf8'));
