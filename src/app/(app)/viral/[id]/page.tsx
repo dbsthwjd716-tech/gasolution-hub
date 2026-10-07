@@ -35,7 +35,7 @@ export default async function ViralDetail(props: PageProps<"/viral/[id]">) {
         <div>
           <h1 className="text-xl font-bold">{o.company_name} · {o.partner_name}</h1>
           <p className="mt-1 text-sm text-ink-soft">
-            {o.paid_date} · 담당 {o.staff_name ?? "미지정"}
+            {o.paid_date ? `입금 ${o.paid_date}` : "입금 전"} · 담당 {o.staff_name ?? "미지정"}
             {o.source_sheet && <span className="ml-2 chip chip-muted">시트 {o.source_sheet} {o.source_row}행에서 옮김</span>}
           </p>
         </div>

@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { isValidBizNo } from "./bizno.ts";
-import { planViralImport, parseAmount, parseDate } from "./viral-import.ts";
+import { planViralImport, parseAmount, parseDate, parsePeriod } from "./viral-import.ts";
 
 // 앞 9자리로 검증을 통과하는 가짜 사업자번호 만들기
 function bizno(nine: string): string {
@@ -61,7 +61,7 @@ test("칸이 한 칸 밀린 탭도 날짜 위치로 맞춰 읽음 (애드매니�
 
 test("필수 칸이 빠진 줄은 건너뛰고 이유를 남김, 빈 줄은 무시", () => {
   const p = planViralImport({
-    포에스: [row({ date: "" }), row({ company: "" }), row({ sale: "" }), row({ mgr: "" }), Array(17).fill("")],
+    포에스: [row({ date: "" }), row({ company: "" }), row({ sale: "미정" }), row({ mgr: "" }), Array(17).fill("")],
   });
   assert.equal(p.orders.length, 0);
   assert.deepEqual(p.skipped.map((s) => s.kind), ["missing_date", "missing_company", "missing_amount", "missing_manager"]);
@@ -93,4 +93,35 @@ test("공급가(VAT 포함)를 VAT 별도로 환산해 판매가보다 크면 �
   assert.ok(!ok.warnings.some((w) => w.kind === "cost_over_sale"));
   const bad = planViralImport({ 제이솔: [row({ cost: "121,000", sale: "100,000" })] });
   assert.ok(bad.warnings.some((w) => w.kind === "cost_over_sale"));
+});
+
+test("날짜 칸에 '입금전'이면 건너뛰지 않고 입금 전 건으로 옮김", () => {
+  const p = planViralImport({ 제이솔: [row({ date: "입금전", paid: "", desc: "26.10.01~26.10.30(30일)" })] });
+  assert.equal(p.orders.length, 1);
+  assert.equal(p.orders[0].paidDate, null);
+  assert.equal(p.orders[0].paymentReceived, false);
+  assert.equal(p.orders[0].startDate, "2026-10-01");
+  assert.equal(p.orders[0].endDate, "2026-10-30");
+  assert.ok(p.warnings.some((w) => w.kind === "unpaid"));
+});
+
+test("판매가가 빈 서비스 건은 0원으로 옮기고 확인 목록에 표시", () => {
+  const p = planViralImport({ 포에스: [row({ sale: "" })] });
+  assert.equal(p.orders.length, 1);
+  assert.equal(p.orders[0].saleAmount, 0);
+  assert.ok(p.warnings.some((w) => w.kind === "no_sale_amount"));
+});
+
+test("마이너스 금액(환불·취소)도 그대로 옮기고 확인 목록에 표시", () => {
+  const p = planViralImport({ 풀림: [row({ sale: "-132,000", cost: "-59,400" })] });
+  assert.equal(p.orders[0].saleAmount, -132000);
+  assert.equal(p.orders[0].costAmount, -59400);
+  assert.ok(p.warnings.some((w) => w.kind === "negative_amount"));
+  assert.equal(p.totals.saleAmount, -132000);
+});
+
+test("기간 칸에서 시작일·끝나는 날 읽기", () => {
+  assert.deepEqual(parsePeriod("25.11.05~25.11.14(10일)"), { start: "2025-11-05", end: "2025-11-14" });
+  assert.deepEqual(parsePeriod("2025. 11. 21~ 플레이스 최적화"), { start: "2025-11-21", end: null });
+  assert.deepEqual(parsePeriod("블로그리뷰50건"), { start: null, end: null });
 });

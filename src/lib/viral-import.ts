@@ -21,7 +21,10 @@ export type ProblemKind =
   | "invalid_bizno"
   | "bizno_conflict"
   | "column_shift"
-  | "cost_over_sale";
+  | "cost_over_sale"
+  | "unpaid"
+  | "no_sale_amount"
+  | "negative_amount";
 
 export type Problem = { tab: string; row: number; kind: ProblemKind; message: string };
 
@@ -29,7 +32,9 @@ export type PlannedOrder = {
   tab: string;
   row: number;
   clientKey: string;
-  paidDate: string;
+  paidDate: string | null; // 입금 전이면 없음
+  startDate: string | null;
+  endDate: string | null;
   description: string | null;
   saleAmount: number;
   costAmount: number;
@@ -112,6 +117,26 @@ function splitEmails(v: unknown): string[] {
     .filter((e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e));
 }
 
+// 날짜 칸에 "입금전", "미입금" 처럼 적힌 경우
+export function isUnpaidMarker(v: unknown): boolean {
+  return /(입금\s*전|미\s*입금|입금\s*예정|입금\s*대기)/.test(String(v ?? ""));
+}
+
+// 기간·내용 칸에서 진행 시작일과 끝나는 날을 꺼냄. 예: "25.11.05~25.11.14(10일)", "2025. 11. 21~ 플레이스 최적화"
+export function parsePeriod(v: unknown): { start: string | null; end: string | null } {
+  const t = String(v ?? "");
+  const re = /(\d{2}|\d{4})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})/g;
+  const found: string[] = [];
+  for (const m of t.matchAll(re)) {
+    const y = m[1].length === 2 ? 2000 + Number(m[1]) : Number(m[1]);
+    const d = parseDate(`${y}.${m[2]}.${m[3]}`);
+    if (d) found.push(d);
+    if (found.length === 2) break;
+  }
+  const [start = null, end = null] = found;
+  return { start, end: end && start && end >= start ? end : null };
+}
+
 // ------------------------------------------------------------------ 한 줄 읽기
 
 type RawRow = {
@@ -119,6 +144,8 @@ type RawRow = {
   row: number;
   shifted: number; // 0이면 정상, 1이면 한 칸 오른쪽으로 밀림, -1이면 왼쪽
   paidDate: string | null;
+  unpaid: boolean; // 날짜 칸에 "입금전" 등
+  saleRaw: string | null;
   description: string | null;
   company: string | null;
   representative: string | null;
@@ -153,6 +180,8 @@ function readRow(tab: string, row: number, cells: unknown[], managers: string[])
     row,
     shifted: dateCol - 1,
     paidDate: parseDate(at(0)),
+    unpaid: !parseDate(at(0)) && isUnpaidMarker(at(0)),
+    saleRaw: text(at(9)),
     description: text(at(1)),
     company: text(at(2)),
     representative: text(at(3)),
@@ -189,10 +218,17 @@ export function planViralImport(
       if (!r) return;
       rowCount++;
       const skip = (kind: ProblemKind, message: string) => skipped.push({ tab, row: r.row, kind, message });
-      if (!r.paidDate) return skip("missing_date", "입금날짜를 읽을 수 없습니다");
+      if (!r.paidDate && !r.unpaid) return skip("missing_date", "입금날짜를 읽을 수 없습니다");
       if (!r.company) return skip("missing_company", "업체명이 없습니다");
-      if (r.sale === null) return skip("missing_amount", "판매가를 읽을 수 없습니다");
+      if (r.sale === null && r.saleRaw) return skip("missing_amount", `판매가 '${r.saleRaw}'를 숫자로 읽을 수 없습니다`);
       if (!r.manager) return skip("missing_manager", "담당자가 없습니다");
+      if (r.unpaid) warnings.push({ tab, row: r.row, kind: "unpaid", message: "입금 전 건으로 옮깁니다 (입금일 비움)" });
+      if (r.sale === null) {
+        r.sale = 0;
+        warnings.push({ tab, row: r.row, kind: "no_sale_amount", message: "판매가가 비어 있어 0원으로 옮깁니다 (서비스 건)" });
+      }
+      if (r.sale < 0 || (r.cost ?? 0) < 0)
+        warnings.push({ tab, row: r.row, kind: "negative_amount", message: "마이너스 금액입니다 (환불·취소 건으로 보임). 그대로 옮깁니다" });
       if (r.shifted !== 0)
         warnings.push({ tab, row: r.row, kind: "column_shift", message: `칸이 ${r.shifted > 0 ? "오른쪽" : "왼쪽"}으로 한 칸 밀려 있어 맞춰서 읽었습니다` });
       rows.push(r);
@@ -266,12 +302,16 @@ export function planViralImport(
       tab: r.tab,
       row: r.row,
       clientKey: key,
-      paidDate: r.paidDate!,
+      paidDate: r.paidDate,
+      ...(() => {
+        const p = parsePeriod(r.description);
+        return { startDate: p.start, endDate: p.end };
+      })(),
       description: r.description,
       saleAmount: r.sale!,
       costAmount: r.cost ?? 0,
       manager: r.manager!,
-      paymentReceived: !!r.paymentNote && /입금|^o$/i.test(r.paymentNote),
+      paymentReceived: !r.unpaid && !!r.paymentNote && /입금|^o$/i.test(r.paymentNote),
       paymentNote: r.paymentNote,
       invoiceIssued: r.invoiceIssued,
       partnerPaid: r.partnerPaid,

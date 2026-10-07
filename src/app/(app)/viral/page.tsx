@@ -4,7 +4,8 @@ import { currentMonthKST } from "./data";
 
 type Row = {
   id: string;
-  paid_date: string;
+  paid_date: string | null;
+  base_date: string;
   company_name: string;
   brand_name: string | null;
   is_provisional: boolean;
@@ -49,13 +50,13 @@ export default async function ViralPage(props: PageProps<"/viral">) {
   const { supabase, me } = await getMe();
   let query = supabase
     .from("viral_orders_view")
-    .select("id,paid_date,company_name,brand_name,is_provisional,description,partner_name,staff_name,staff_id,sale_amount,cost_amount,margin_amount,payment_received,invoice_status,partner_paid")
-    .order("paid_date", { ascending: false })
+    .select("id,paid_date,base_date,company_name,brand_name,is_provisional,description,partner_name,staff_name,staff_id,sale_amount,cost_amount,margin_amount,payment_received,invoice_status,partner_paid")
+    .order("base_date", { ascending: false })
     .limit(2000);
   // 미입금·미발행·미결제 목록은 달과 상관없이 밀린 건을 모두 보여줌
   if (ym !== "all" && tab === "all") {
     const r = monthRange(ym);
-    query = query.gte("paid_date", r.from).lt("paid_date", r.to);
+    query = query.gte("base_date", r.from).lt("base_date", r.to);
   }
   if (tab === "unpaid") query = query.eq("payment_received", false);
   if (tab === "invoice") query = query.in("invoice_status", ["not_issued", "requested"]);
@@ -147,7 +148,7 @@ export default async function ViralPage(props: PageProps<"/viral">) {
           <tbody>
             {rows.map((r) => (
               <tr key={r.id} className="border-b border-[var(--glass-border)] last:border-0 hover:bg-white/60">
-                <td className="px-4 py-3 tabular-nums">{r.paid_date}</td>
+                <td className="px-4 py-3 tabular-nums">{r.paid_date ?? <span className="chip chip-warn">입금 전</span>}</td>
                 <td className="px-4 py-3 font-semibold">
                   <Link href={`/viral/${r.id}`} className="hover:text-brand">{r.company_name}</Link>
                   {r.brand_name && <span className="ml-1 text-xs font-normal text-ink-soft">{r.brand_name}</span>}

@@ -15,8 +15,9 @@ const s = (f: FormData, k: string) => {
 const money = (f: FormData, k: string) => {
   const v = s(f, k);
   if (v === null) return null;
+  // 환불·취소는 마이너스로 입력 (예: -132,000)
   const n = Number(v.replace(/[,원\s]/g, ""));
-  return Number.isFinite(n) && n >= 0 ? Math.round(n) : NaN;
+  return Number.isFinite(n) ? Math.round(n) : NaN;
 };
 
 function friendly(message: string) {
@@ -33,7 +34,6 @@ function orderFields(f: FormData) {
   const cost = money(f, "cost_amount");
   if (!client_id) return { error: "거래처를 골라 주세요." } as const;
   if (!partner_id) return { error: "협력사를 골라 주세요." } as const;
-  if (!paid_date) return { error: "입금일(시작일)을 입력해 주세요." } as const;
   if (sale === null || Number.isNaN(sale)) return { error: "판매가를 숫자로 입력해 주세요." } as const;
   if (Number.isNaN(cost)) return { error: "공급가를 숫자로 입력해 주세요." } as const;
   const start = s(f, "start_date");
@@ -204,6 +204,8 @@ export async function runViralImport(): Promise<ImportResult> {
       partner_id: partnerId.get(o.tab)!,
       staff_id: sid,
       paid_date: o.paidDate,
+      start_date: o.startDate,
+      end_date: o.endDate,
       description: o.description,
       sale_amount: o.saleAmount,
       cost_amount: o.costAmount,
@@ -222,7 +224,20 @@ export async function runViralImport(): Promise<ImportResult> {
   for (let i = 0; i < rows.length; i += 200) {
     const chunk = rows.slice(i, i + 200);
     const { error } = await supabase.from("viral_orders").upsert(chunk, { onConflict: "source_sheet,source_row" });
-    if (error) return { error: `${i + 1}번째 건부터 저장하지 못했습니다: ${error.message}` };
+    if (error) {
+      // 묶음이 거절되면 한 건씩 다시 넣어서, 어느 시트 몇 행이 문제인지 찾아 알려줌
+      const failed: string[] = [];
+      for (const r of chunk) {
+        const one = await supabase.from("viral_orders").upsert(r, { onConflict: "source_sheet,source_row" });
+        if (one.error) failed.push(`${r.source_sheet} ${r.source_row}행 (${one.error.message})`);
+        else saved++;
+      }
+      if (failed.length)
+        return {
+          error: `${saved}건은 저장했고, ${failed.length}건은 저장하지 못했습니다: ${failed.slice(0, 5).join(" / ")}${failed.length > 5 ? " …" : ""}`,
+        };
+      continue;
+    }
     saved += chunk.length;
   }
 

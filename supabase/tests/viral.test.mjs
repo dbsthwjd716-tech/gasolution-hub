@@ -44,8 +44,18 @@ export async function run() {
     as('kim', `insert into viral_orders(client_id,brand_id,partner_id,paid_date,sale_amount) values ($1,$2,$3,'2026-10-07',1000)`, [c1, b2, pid]));
   await expectBlocked('거래처 없이 등록', () =>
     as('kim', `insert into viral_orders(partner_id,paid_date,sale_amount) values ($1,'2026-10-07',1000)`, [pid]));
-  await expectBlocked('금액을 음수로 입력', () =>
-    as('kim', `insert into viral_orders(client_id,partner_id,paid_date,sale_amount) values ($1,$2,'2026-10-07',-5)`, [c1, pid]));
+  await expectOk('환불·취소는 마이너스 금액으로 등록 가능 (마진도 마이너스)', async () => {
+    const r = await as('kim', `insert into viral_orders(client_id,partner_id,paid_date,sale_amount,cost_amount)
+        values ($1,$2,'2026-10-07',-132000,-59400) returning margin_amount`, [c1, pid]);
+    if (Number(r.rows[0].margin_amount) !== -78000) throw new Error(String(r.rows[0].margin_amount));
+  });
+  await expectBlocked('판매가 칸 없이 등록', () =>
+    as('kim', `insert into viral_orders(client_id,partner_id,paid_date) values ($1,$2,'2026-10-07')`, [c1, pid]));
+  await expectOk('입금 전 건은 입금일 없이 등록하고, 목록의 기준일은 진행 시작일', async () => {
+    const r = await as('kim', `insert into viral_orders(client_id,partner_id,start_date,sale_amount) values ($1,$2,'2026-10-20',100000) returning id`, [c1, pid]);
+    const v = await as('kim', `select paid_date, base_date::text from viral_orders_view where id=$1`, [r.rows[0].id]);
+    if (v.rows[0].paid_date !== null || v.rows[0].base_date !== '2026-10-20') throw new Error(JSON.stringify(v.rows[0]));
+  });
 
   console.log('상태 관리');
   await expectOk('세금계산서 발행 처리하면 발행일이 자동으로 오늘', async () => {

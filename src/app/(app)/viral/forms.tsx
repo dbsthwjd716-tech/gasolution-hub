@@ -23,7 +23,7 @@ export type OrderValues = {
   client_id?: string;
   brand_id?: string | null;
   partner_id?: string;
-  paid_date?: string;
+  paid_date?: string | null;
   start_date?: string | null;
   end_date?: string | null;
   description?: string | null;
@@ -35,7 +35,8 @@ export type OrderValues = {
 const won = (n: number) => n.toLocaleString("ko-KR");
 // 한국 시간 기준 오늘 (YYYY-MM-DD)
 const todayKST = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(new Date());
-const digits = (v: string) => Number(v.replace(/[^\d]/g, "") || 0);
+// 숫자만 남김 (맨 앞 - 는 환불·취소 표시로 유지)
+const digits = (v: string) => (v.trim().startsWith("-") ? -1 : 1) * Number(v.replace(/[^\d]/g, "") || 0);
 const norm = (v: string) => v.replace(/(주식회사|\(주\)|㈜)/g, "").replace(/[\s\-_.()[\]/·,]/g, "").toLowerCase();
 
 function Message({ state }: { state: FormState }) {
@@ -178,8 +179,9 @@ export function ViralOrderForm({
             </select>
           </div>
           <div>
-            <label className="label" htmlFor="paid_date">입금일(시작일) *</label>
-            <input id="paid_date" name="paid_date" type="date" required defaultValue={initial.paid_date ?? todayKST()} className="field" />
+            <label className="label" htmlFor="paid_date">입금일</label>
+            <input id="paid_date" name="paid_date" type="date" defaultValue={initial.client_id ? (initial.paid_date ?? "") : todayKST()} className="field" />
+            <p className="mt-1 text-xs text-ink-soft">입금 전이면 비워 두세요. 입금되면 날짜를 넣고 상태에서 &lsquo;입금 확인&rsquo;을 체크합니다.</p>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
