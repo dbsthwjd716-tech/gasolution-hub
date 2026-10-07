@@ -100,6 +100,7 @@ function orderFields(f: FormData) {
   };
   // 파생 실적자 칸은 대표·팀장 화면에만 있음. 칸이 없으면 기존 값 유지
   if (f.has("derived_staff_id")) row.derived_staff_id = s(f, "derived_staff_id");
+  if (s(f, "staff_id")) row.staff_id = s(f, "staff_id");
   return { row, items: parsed.items } as const;
 }
 

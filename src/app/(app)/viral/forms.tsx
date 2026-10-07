@@ -41,6 +41,8 @@ export type OrderValues = {
   partner_id?: string;
   paid_date?: string | null;
   derived_staff_id?: string | null;
+  staff_id?: string | null;
+  staff_name?: string | null;
   memo?: string | null;
   items?: ItemValues[];
 };
@@ -123,6 +125,7 @@ export function ViralOrderForm({
   staff = [],
   canSetDerived = false,
   prices = [],
+  meId,
 }: {
   action: Action;
   clients: ClientOption[];
@@ -133,6 +136,7 @@ export function ViralOrderForm({
   staff?: { id: string; name: string }[];
   canSetDerived?: boolean;
   prices?: PriceRow[];
+  meId?: string;
 }) {
   const [state, formAction, pending] = useActionState(action, { error: "" });
   const [clientId, setClientId] = useState(initial.client_id ?? "");
@@ -303,6 +307,16 @@ export function ViralOrderForm({
             <input id="paid_date" name="paid_date" type="date" defaultValue={initial.client_id ? (initial.paid_date ?? "") : todayKST()} className="field" />
             <p className="mt-1 text-xs text-ink-soft">입금 전이면 비워 두세요. 입금되면 날짜를 넣고 상태에서 &lsquo;입금 확인&rsquo;을 체크합니다.</p>
           </div>
+          <div>
+            <label className="label" htmlFor="staff_id">담당자</label>
+            <select id="staff_id" name="staff_id" defaultValue={initial.staff_id ?? meId ?? ""} className="field">
+              {canSetDerived
+                ? staff.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)
+                : staff.filter((p) => p.id === meId || p.id === initial.staff_id).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {initial.staff_id && !staff.some((p) => p.id === initial.staff_id) && <option value={initial.staff_id}>{initial.staff_name ?? "(퇴사)"}</option>}
+            </select>
+            {!canSetDerived && <p className="mt-1 text-xs text-ink-soft">다른 직원을 담당으로 바꾸는 것은 대표·팀장이 합니다.</p>}
+          </div>
           {(canSetDerived || initial.derived_staff_id) && (
             <div>
               <label className="label" htmlFor="derived_staff_id">파생 실적자</label>
@@ -387,7 +401,11 @@ export function ViralOrderForm({
                     ) : <span />}
                   </div>
                   <p className="text-xs text-ink-soft">
-                    {digits(it.sale) !== 0 && <>고객 입금액(VAT 포함) {won(Math.round(digits(it.sale) * 1.1))}원 · </>}
+                    {digits(it.sale) !== 0 && (
+                      <>
+                        판매가(VAT 포함) {won(Math.round(digits(it.sale) * 1.1))}원 · 실제 인센티브 집행 비용 <b className="text-ink">{won(it.excluded ? 0 : digits(it.sale))}원</b>(VAT 별도) ·{" "}
+                      </>
+                    )}
                     {price ? (
                       <>
                         단가표: 1{price.unit_label}당 공급가 {won(price.cost_price)} / 판매가 {won(price.sale_price)}

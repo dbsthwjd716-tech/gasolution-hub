@@ -62,7 +62,7 @@ export default async function ViralDetail(props: PageProps<"/viral/[id]">) {
     businessNumber: formatBizNo(o.business_number) || null,
     emails: o.billing_emails ?? [],
     hasRegistration: o.has_registration,
-    items: rows.map((i) => ({ description: i.description, product_type: i.product_type, platform: i.platform, sale_amount: Number(i.sale_amount) })),
+    items: rows.map((i) => ({ description: i.description, product_type: i.product_type, platform: i.platform, sale_amount: Number(i.sale_amount), start_date: i.start_date, end_date: i.end_date })),
   });
   const sign = (e: string) => (e === "refund_issued" || e === "prepaid_received" ? "+" : "−");
 
@@ -94,7 +94,7 @@ export default async function ViralDetail(props: PageProps<"/viral/[id]">) {
       <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
         <section className="glass p-5">
           <h2 className="mb-4 font-bold">건 정보</h2>
-          <ViralOrderForm action={updateViralOrder.bind(null, id)} clients={clients} partners={partners} prices={prices} initial={{ ...o, items: rows }} staff={staff} canSetDerived={isManager} submitLabel="저장" readOnly={!canEdit} />
+          <ViralOrderForm action={updateViralOrder.bind(null, id)} clients={clients} partners={partners} prices={prices} initial={{ ...o, items: rows }} staff={staff} canSetDerived={isManager} meId={me?.id} submitLabel="저장" readOnly={!canEdit} />
         </section>
         <div className="space-y-4">
           <section className="glass h-fit p-5">

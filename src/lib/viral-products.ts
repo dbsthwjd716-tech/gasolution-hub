@@ -46,13 +46,11 @@ export function endDate(start: string, days: number) {
   return d.toISOString().slice(0, 10);
 }
 
-const yymmdd = (d: string) => `${d.slice(2, 4)}.${d.slice(5, 7)}.${d.slice(8, 10)}`;
-
-// 시트에 쓰던 모양의 상품 설명: "26.10.04~26.11.02(30일) 메이크 2슬롯"
+// 상품 설명: "(30일) 메이크 2슬롯"
 export function describeItem(i: { product_type: string; product_name?: string | null; days?: number | null; quantity?: number | null; start_date?: string | null; end_date?: string | null; platform?: string | null }) {
+  // 날짜는 시작일·끝나는 날 칸에 따로 있으므로 설명에는 일수만: "(30일) 메이크 2슬롯"
   const parts: string[] = [];
-  if (i.start_date) parts.push(`${yymmdd(i.start_date)}~${i.end_date ? yymmdd(i.end_date) : ""}${i.days ? `(${i.days}일)` : ""}`);
-  else if (i.days) parts.push(`(${i.days}일)`);
+  if (i.days) parts.push(`(${i.days}일)`);
   if (i.product_type === "슬롯") {
     parts.push([i.product_name, i.quantity ? `${Number(i.quantity)}슬롯` : "슬롯"].filter(Boolean).join(" "));
   } else {
@@ -71,8 +69,14 @@ export function viralRequestText(o: {
   businessNumber: string | null;
   emails: string[];
   hasRegistration: boolean;
-  items: { description: string | null; product_type: string | null; platform: string | null; sale_amount: number }[];
+  items: { description: string | null; product_type: string | null; platform: string | null; sale_amount: number; start_date?: string | null; end_date?: string | null }[];
 }) {
+  const ymd = (d: string) => `${d.slice(2, 4)}.${d.slice(5, 7)}.${d.slice(8, 10)}`;
+  // 설명에 날짜가 없으면 시작일~끝나는 날을 앞에 붙임: "26.10.04~26.11.02(30일) 메이크 2슬롯"
+  const line = (i: { description: string | null; start_date?: string | null; end_date?: string | null }) =>
+    i.description && i.start_date && !/^\d{2}\.\d{2}\.\d{2}/.test(i.description)
+      ? `${ymd(i.start_date)}~${i.end_date ? ymd(i.end_date) : ""}${i.description.startsWith("(") ? "" : " "}${i.description}`
+      : i.description;
   const md = (d: string) => `${d.slice(5, 7)}/${d.slice(8, 10)}`;
   const won = (n: number) => n.toLocaleString("ko-KR") + "원";
   const costs = o.items
@@ -82,7 +86,7 @@ export function viralRequestText(o: {
   return [
     "세금계산서 발행요청",
     `입금 ${o.paidDate ? md(o.paidDate) : "전"}`,
-    ...o.items.map((i) => i.description).filter(Boolean),
+    ...o.items.map(line).filter(Boolean),
     "",
     `1. 업체: ${o.company}`,
     `2. 대표자: ${o.representative ?? ""}`,

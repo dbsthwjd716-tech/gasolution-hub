@@ -68,10 +68,15 @@ export default async function ViralPage(props: PageProps<"/viral">) {
   const { data, error } = await query.returns<Row[]>();
   const rows = data ?? [];
   // 인센티브에서 빼는 줄(제품비 등)의 판매가를 건별로 모음
-  const { data: ex } = await supabase.from("viral_order_items").select("order_id,sale_amount").eq("incentive_excluded", true);
+  const { data: lines } = await supabase.from("viral_order_items").select("order_id,sale_amount,incentive_excluded,platform").limit(10000);
   const shown = new Set(rows.map((r) => r.id));
   const excluded = new Map<string, number>();
-  for (const e of ex ?? []) if (shown.has(e.order_id)) excluded.set(e.order_id, (excluded.get(e.order_id) ?? 0) + Number(e.sale_amount));
+  const platforms = new Map<string, Set<string>>();
+  for (const e of lines ?? []) {
+    if (!shown.has(e.order_id)) continue;
+    if (e.incentive_excluded) excluded.set(e.order_id, (excluded.get(e.order_id) ?? 0) + Number(e.sale_amount));
+    if (e.platform) platforms.set(e.order_id, (platforms.get(e.order_id) ?? new Set()).add(e.platform));
+  }
   const excludedTotal = [...excluded.values()].reduce((a, b) => a + b, 0);
 
   const sum = (k: "sale_amount" | "cost_amount" | "margin_amount") => rows.reduce((s, r) => s + Number(r[k]), 0);
@@ -142,12 +147,13 @@ export default async function ViralPage(props: PageProps<"/viral">) {
       {error && <p className="glass p-4 text-sm text-danger">목록을 불러오지 못했습니다: {error.message}</p>}
 
       <div className="glass overflow-x-auto">
-        <table className="w-full min-w-[960px] text-sm">
+        <table className="w-full min-w-[1180px] text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
           <thead className="text-left text-xs text-ink-soft">
             <tr className="border-b border-[var(--glass-border)]">
               <th className="px-4 py-3">입금일</th>
               <th className="px-4 py-3">거래처</th>
               <th className="px-4 py-3">상품</th>
+              <th className="px-4 py-3">매체</th>
               <th className="px-4 py-3">협력사</th>
               <th className="px-4 py-3 text-right">판매가</th>
               <th className="px-4 py-3 text-right">마진</th>
@@ -166,10 +172,11 @@ export default async function ViralPage(props: PageProps<"/viral">) {
                   {r.brand_name && <span className="ml-1 text-xs font-normal text-ink-soft">{r.brand_name}</span>}
                   {r.is_provisional && <span className="chip chip-warn ml-2">사업자번호 없음</span>}
                 </td>
-                <td className="max-w-64 px-4 py-3 text-ink-soft">
-                  <span className="line-clamp-1">{r.first_item_description ?? r.description ?? "-"}</span>
+                <td className="max-w-72 px-4 py-3 text-ink-soft">
+                  <span className="block truncate" title={r.first_item_description ?? r.description ?? ""}>{r.first_item_description ?? r.description ?? "-"}</span>
                   {r.item_count > 1 && <span className="chip chip-info mt-1">외 {r.item_count - 1}개 · 총 {r.item_count}줄</span>}
                 </td>
+                <td className="px-4 py-3">{[...(platforms.get(r.id) ?? [])].join(", ") || "-"}</td>
                 <td className="px-4 py-3">{r.partner_name}</td>
                 <td className="px-4 py-3 text-right tabular-nums">
                   {won(r.sale_amount)}
@@ -186,7 +193,7 @@ export default async function ViralPage(props: PageProps<"/viral">) {
               </tr>
             ))}
             {!rows.length && !error && (
-              <tr><td colSpan={10} className="px-4 py-10 text-center text-ink-soft">해당하는 바이럴 건이 없습니다.</td></tr>
+              <tr><td colSpan={11} className="px-4 py-10 text-center text-ink-soft">해당하는 바이럴 건이 없습니다.</td></tr>
             )}
           </tbody>
         </table>

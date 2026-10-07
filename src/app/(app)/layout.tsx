@@ -17,7 +17,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   if (!user) redirect("/login");
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-7xl flex-col gap-4 px-4 py-4 md:flex-row md:gap-6 md:py-6">
+    <div className="mx-auto flex min-h-screen max-w-[1680px] flex-col gap-4 px-4 py-4 md:flex-row md:gap-6 md:py-6">
       <aside className="glass flex shrink-0 flex-row items-center justify-between gap-4 p-4 md:w-52 md:flex-col md:items-stretch md:justify-start">
         <div>
           <p className="text-[11px] font-semibold tracking-wide text-brand">GA SOLUTION</p>
