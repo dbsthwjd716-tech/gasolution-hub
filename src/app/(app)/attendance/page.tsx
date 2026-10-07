@@ -35,13 +35,19 @@ export default async function MyAttendance(props: PageProps<"/attendance">) {
   const mine = ((summary ?? []) as { staff_id: string; granted: number; adjustment: number; used: number; pending: number; remaining: number }[]).find((x) => x.staff_id === me.id);
   const pendingCorr = new Set((corrections ?? []).map((c) => c.attendance_record_id));
   const weekend = weekdayIndex(today) >= 5;
+  const todayLeave = (leaves ?? []).find((l) => l.status === "approved" && ["annual", "family_event", "reward"].includes(l.leave_type) && l.start_date <= today && l.end_date >= today);
+  const todayOff = (exceptions ?? []).find((e) => e.status === "approved" && e.exception_type === "other" && !e.start_time && !e.end_time && e.work_date === today);
   const blocked = weekend
     ? "오늘은 주말입니다."
     : holiday
       ? `오늘은 휴일입니다 (${holiday.holiday_name}).`
-      : todayRec && !todayRec.clock_in && FULL_DAY.includes(todayRec.attendance_status)
-        ? `오늘은 ${ATT_STATUS[todayRec.attendance_status]}입니다. 출퇴근 처리가 필요 없습니다.`
-        : undefined;
+      : todayLeave
+        ? `오늘은 ${LEAVE_TYPE[todayLeave.leave_type]}입니다. 출퇴근 처리가 필요 없습니다.`
+        : todayOff
+          ? "오늘은 종일 기타 근태로 승인된 날입니다. 출퇴근 처리가 필요 없습니다."
+          : todayRec && !todayRec.clock_in && FULL_DAY.includes(todayRec.attendance_status)
+            ? `오늘은 ${ATT_STATUS[todayRec.attendance_status]}입니다. 출퇴근 처리가 필요 없습니다.`
+            : undefined;
   const lateCount = (records ?? []).filter((r) => r.is_late).length;
   const earlyCount = (records ?? []).filter((r) => r.is_early_leave).length;
 

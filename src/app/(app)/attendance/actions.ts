@@ -223,10 +223,9 @@ export async function importLegacyAttendance(_p: FormState, _f: FormData): Promi
   if (!data) return { error: error ?? "읽지 못했습니다." };
   const { data: r, error: e } = await supabase.rpc("import_legacy_attendance", { payload: data });
   if (e) return { error: friendly(e.message) };
-  const x = r as { leaves: number; exceptions: number; records: number; skipped_records: number; removed_records: number; corrections: number; created_staff: string[] };
+  const x = r as { leaves: number; exceptions: number; records: number; skipped_records: number; corrections: number; created_staff: string[] };
   const parts = [`출퇴근 기록 ${x.records}건`, `휴가 신청 ${x.leaves}건`, `근태 예외 ${x.exceptions}건`, `수정 요청 ${x.corrections}건`];
   if (x.skipped_records) parts.push(`같은 날 통합 시스템 기록이 있어 건너뛴 ${x.skipped_records}건`);
-  if (x.removed_records) parts.push(`예전에서 지워져 함께 지운 ${x.removed_records}건`);
   if (x.created_staff.length) parts.push(`퇴사 직원으로 새로 등록: ${x.created_staff.join(", ")}`);
   return done("옮겼습니다 · " + parts.join(" · "));
 }

@@ -53,11 +53,9 @@ export async function run() {
     if (r.rows.length) throw new Error('보임');
   });
   await expectBlocked('1차 없이 최종 승인', () => as('ceo', `select leave_decide($1,'final')`, [L.id]));
-  await expectOk('팀장 1차 → 대표 최종 → 그날 연차 근태가 생기고 출근 막힘', async () => {
+  await expectOk('팀장 1차 → 대표 최종 → 그날 출근 막힘', async () => {
     await as('lead', `select leave_decide($1,'first')`, [L.id]);
     await as('ceo', `select leave_decide($1,'final')`, [L.id]);
-    const r = await one(`select attendance_status from attendance_records where staff_id=$1 and work_date='2026-10-08'`, [kim]);
-    if (r?.attendance_status !== 'annual_leave') throw new Error(JSON.stringify(r));
     try { await db.query(`select att_clock_in($1, '2026-10-08 10:00+09')`, [kim]); throw new Error('출근됨'); } catch (e) { if (e.message === '출근됨') throw e; }
   });
   await expectOk('연차 현황: 직원은 본인 것만, 남은 연차 = 3 − 1', async () => {
@@ -66,13 +64,14 @@ export async function run() {
     const all = await as('lead', `select * from leave_summary(2026)`);
     if (all.rows.length < 4) throw new Error('대표·팀장은 전체가 보여야 함');
   });
-  await expectOk('승인된 연차 취소: 요청 → 1차 → 최종 → 근태 지워지고 연차 복구', async () => {
+  await expectOk('승인된 연차 취소: 요청 → 1차 → 최종 → 연차 복구, 그날 다시 출근 가능', async () => {
     await as('kim', `select leave_cancel_request($1,'일정 변경')`, [L.id]);
     await as('lead', `select leave_cancel_decide($1,'first')`, [L.id]);
     await as('ceo', `select leave_cancel_decide($1,'final')`, [L.id]);
     const r = await one(`select status, cancel_status from leave_requests where id=$1`, [L.id]);
-    const c = await one(`select count(*)::int n from attendance_records where leave_request_id=$1`, [L.id]);
-    if (r.status !== 'cancelled' || r.cancel_status || c.n) throw new Error(JSON.stringify([r, c]));
+    const sm = (await as('kim', `select remaining from leave_summary(2026)`)).rows[0];
+    await db.query(`select att_clock_in($1, '2026-10-08 09:50+09')`, [kim]);
+    if (r.status !== 'cancelled' || r.cancel_status || Number(sm.remaining) !== 3) throw new Error(JSON.stringify([r, sm]));
   });
   await expectOk('오전반차 승인 후 15:10 출근은 지각, 14:50은 정상', async () => {
     const h = (await as('kim', `insert into leave_requests(staff_id, leave_type, start_date, end_date) values ($1,'morning_half','2026-10-14','2026-10-14') returning id, leave_days`, [kim])).rows[0];
@@ -94,11 +93,10 @@ export async function run() {
   });
 
   console.log('근태 예외');
-  await expectOk('종일 기타 근태 승인 → 근태 기록 자동 생성', async () => {
+  await expectOk('종일 기타 근태 승인 → 그날 출근 막힘', async () => {
     const e = (await as('kim', `insert into attendance_exceptions(staff_id, work_date, exception_type, note) values ($1,'2026-10-15','other','예비군 훈련') returning id`, [kim])).rows[0];
     await as('lead', `select attendance_exception_decide($1,'approve')`, [e.id]);
-    const r = await one(`select attendance_status from attendance_records where attendance_exception_id=$1`, [e.id]);
-    if (r?.attendance_status !== 'other') throw new Error('기록 없음');
+    try { await db.query(`select att_clock_in($1, '2026-10-15 10:00+09')`, [kim]); throw new Error('출근됨'); } catch (x) { if (x.message === '출근됨') throw x; }
   });
   await expectBlocked('직원이 승인 상태로 예외 넣기', () => as('kim', `insert into attendance_exceptions(staff_id, work_date, exception_type, note, status) values ($1,'2026-10-22','other','x','approved')`, [kim]));
   await expectBlocked('미팅 장소 없이 신청', () => as('kim', `insert into attendance_exceptions(staff_id, work_date, exception_type, note, start_time) values ($1,'2026-10-22','meeting','광고 미팅','14:00')`, [kim]));
@@ -128,10 +126,7 @@ export async function run() {
   });
   await expectBlocked('직원이 근태 기록 직접 고치기', () => as('kim', `select attendance_record_save($1,'2026-10-12',null,null,null,'x')`, [kim]));
   await expectOk('팀장이 출근 기록 없는 날 기록 추가', () => as('lead', `select attendance_record_save($1,'2026-10-13','2026-10-13 09:58+09','2026-10-13 19:00+09',null,'출근 버튼 누락')`, [kim]));
-  await expectBlocked('휴가로 만들어진 기록 직접 고치기', async () => {
-    const r = await one(`select work_date from attendance_records where staff_id=$1 and attendance_status='other'`, [kim]);
-    return as('lead', `select attendance_record_save($1,$2,'2026-10-15 10:00+09',null,null,'x')`, [kim, r.work_date]);
-  });
+  await expectBlocked('종일 기타 근태 날 출근 기록 넣기', () => as('lead', `select attendance_record_save($1,'2026-10-15','2026-10-15 10:00+09',null,null,'x')`, [kim]));
 
   console.log('달력·보기 권한');
   await expectOk('직원 달력: 남의 승인 휴가·공휴일은 보이고 출퇴근 기록은 안 보임', async () => {
@@ -205,18 +200,17 @@ export async function run() {
   await expectBlocked('직원이 옮기기 실행', () => as('kim', `select import_legacy_attendance($1)`, [JSON.stringify(payload)]));
   await expectOk('옮기기: 이름으로 연결, 없는 퇴사 직원은 새로 만듦, 같은 날 새 기록이 있으면 그쪽 유지', async () => {
     const r = (await as('lead', `select import_legacy_attendance($1) j`, [JSON.stringify(payload)])).rows[0].j;
-    if (r.records !== 2 || r.skipped_records !== 1 || r.created_staff[0] !== '박퇴사' || r.leaves !== 3) throw new Error(JSON.stringify(r));
+    // 26번은 휴가 때문에 자동으로 생긴 기록이라 옮기지 않음, 99번은 같은 날 새 기록이 있어 건너뜀
+    if (r.records !== 1 || r.skipped_records !== 1 || r.created_staff[0] !== '박퇴사' || r.leaves !== 3) throw new Error(JSON.stringify(r));
     const s = await one(`select legacy_dashboard_employee_id from staff where id=$1`, [kim]);
     const hr = await one(`select birthday_month from staff_hr where staff_id=$1`, [kim]);
     const rs = await one(`select r.resubmitted_from_id = p.id ok from leave_requests r join leave_requests p on p.legacy_id=33 where r.legacy_id=36`);
-    const lk = await one(`select l.legacy_id from attendance_records a join leave_requests l on l.id=a.leave_request_id where a.legacy_id=26`);
     const cor = await one(`select count(*)::int n from attendance_correction_requests where legacy_id=1`);
-    if (Number(s.legacy_dashboard_employee_id) !== 1 || hr.birthday_month !== 8 || !rs.ok || Number(lk.legacy_id) !== 42 || cor.n !== 1) throw new Error('연결 오류');
+    if (Number(s.legacy_dashboard_employee_id) !== 1 || hr.birthday_month !== 8 || !rs.ok || cor.n !== 1) throw new Error('연결 오류');
   });
-  await expectOk('다시 옮겨도 중복 없음, 예전에서 바뀐 상태 반영, 지워진 기록은 지움', async () => {
+  await expectOk('다시 옮겨도 중복 없음, 예전에서 바뀐 상태 반영', async () => {
     const p2 = structuredClone(payload);
     p2.leaves[0].status = 'cancelled';
-    p2.records = p2.records.filter((x) => x.id !== 26);
     await as('lead', `select import_legacy_attendance($1)`, [JSON.stringify(p2)]);
     const c = await one(`select (select count(*)::int from leave_requests where legacy_id is not null) l, (select count(*)::int from attendance_records where legacy_id is not null) r,
                            (select status from leave_requests where legacy_id=42) s, (select count(*)::int from staff where name='박퇴사') p`);

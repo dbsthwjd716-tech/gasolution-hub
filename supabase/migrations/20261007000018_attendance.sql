@@ -312,36 +312,8 @@ $$;
 create trigger leave_requests_before before insert or update on public.leave_requests
   for each row execute function public.leave_requests_before();
 
--- 최종 승인된 종일 휴가(연차·경조·포상)는 그날 근태 기록을 자동으로 만들고, 취소·반려되면 지움
-create or replace function public.leave_requests_sync_attendance() returns trigger
-language plpgsql security definer set search_path = public as $$
-declare d date; st text; nt text;
-begin
-  if public.att_importing() then return new; end if;
-  if new.leave_type not in ('annual','family_event','reward') then return new; end if;
-  if tg_op = 'UPDATE' and old.status = new.status and old.start_date = new.start_date and old.end_date = new.end_date
-     and old.leave_type = new.leave_type then
-    return new;
-  end if;
-  st := case new.leave_type when 'family_event' then 'family_event' when 'reward' then 'reward_leave' else 'annual_leave' end;
-  nt := case new.leave_type when 'family_event' then '승인된 경조휴가' when 'reward' then '승인된 포상휴가' else '승인된 종일 연차' end;
-  delete from public.attendance_records
-   where leave_request_id = new.id and attendance_status in ('annual_leave','family_event','reward_leave')
-     and clock_in is null and clock_out is null;
-  if new.status = 'approved' then
-    for d in select g::date from generate_series(new.start_date, new.end_date, interval '1 day') g where public.att_is_workday(g::date) loop
-      if exists (select 1 from public.attendance_records where staff_id = new.staff_id and work_date = d) then
-        raise exception '% 날짜에 이미 근태 기록이 있어 종일 휴가를 승인할 수 없습니다', d;
-      end if;
-      insert into public.attendance_records(staff_id, work_date, attendance_status, note, leave_request_id)
-      values (new.staff_id, d, st, nt, new.id);
-    end loop;
-  end if;
-  return new;
-end
-$$;
-create trigger leave_requests_sync_attendance after insert or update on public.leave_requests
-  for each row execute function public.leave_requests_sync_attendance();
+-- 승인된 종일 휴가·종일 기타 근태는 근태 기록을 따로 만들지 않고, 출근 막기·달력·현황에서 신청 내역을 바로 읽음
+-- (예전 대시보드는 기록을 만들었다가 취소되면 지웠음. 여기서는 지우는 동작 없이 같은 결과)
 
 -- ---------------------------------------------------------------- 근태 예외 검사
 create or replace function public.attendance_exceptions_before() returns trigger
@@ -391,31 +363,6 @@ $$;
 create trigger attendance_exceptions_before before insert or update on public.attendance_exceptions
   for each row execute function public.attendance_exceptions_before();
 
--- 승인된 '종일' 기타 근태(시간 없음)는 그날 근태 기록을 자동으로 만들고, 취소되면 지움
-create or replace function public.attendance_exceptions_sync() returns trigger
-language plpgsql security definer set search_path = public as $$
-begin
-  if public.att_importing() then return coalesce(new, old); end if;
-  if tg_op = 'DELETE' then
-    delete from public.attendance_records where attendance_exception_id = old.id;
-    return old;
-  end if;
-  delete from public.attendance_records where attendance_exception_id = new.id and clock_in is null and clock_out is null;
-  if new.exception_type <> 'other' or new.status <> 'approved' or new.start_time is not null or new.end_time is not null then
-    return new;
-  end if;
-  if not public.att_is_workday(new.work_date) then raise exception '종일 기타 근태는 평일 근무일만 승인할 수 있습니다'; end if;
-  if exists (select 1 from public.attendance_records where staff_id = new.staff_id and work_date = new.work_date) then
-    raise exception '그날 이미 출퇴근 또는 휴가 기록이 있어 종일 기타 근태를 승인할 수 없습니다';
-  end if;
-  insert into public.attendance_records(staff_id, work_date, attendance_status, note, attendance_exception_id)
-  values (new.staff_id, new.work_date, 'other', '승인된 종일 기타 근태: ' || coalesce(new.note, ''), new.id);
-  return new;
-end
-$$;
-create trigger attendance_exceptions_sync after insert or update or delete on public.attendance_exceptions
-  for each row execute function public.attendance_exceptions_sync();
-
 -- 승인된 종일 휴가가 있는 날에는 출근 시각을 넣을 수 없음
 create or replace function public.attendance_records_before() returns trigger
 language plpgsql security definer set search_path = public as $$
@@ -426,6 +373,11 @@ begin
     select 1 from public.leave_requests lr where lr.staff_id = new.staff_id and lr.status = 'approved'
        and lr.leave_type in ('annual','family_event','reward') and new.work_date between lr.start_date and lr.end_date) then
     raise exception '승인된 종일 휴가가 있는 날에는 출근할 수 없습니다';
+  end if;
+  if new.clock_in is not null and exists (
+    select 1 from public.attendance_exceptions ae where ae.staff_id = new.staff_id and ae.work_date = new.work_date and ae.status = 'approved'
+       and ae.exception_type = 'other' and ae.start_time is null and ae.end_time is null) then
+    raise exception '승인된 종일 기타 근태가 있는 날에는 출근할 수 없습니다';
   end if;
   return new;
 end
@@ -818,12 +770,12 @@ end $$;
 
 -- ---------------------------------------------------------------- 예전 대시보드 근태 옮기기 (대표·팀장)
 -- 예전 직원 번호 → 통합 시스템 직원 (예전 번호가 연결된 직원 → 같은 이름 → 없으면 퇴사 직원으로 만듦)
--- 예전 번호(legacy_id)로 이미 옮긴 기록은 최신 상태로 고치고, 예전에서 지워진 기록은 여기서도 지움
+-- 예전 번호(legacy_id)로 이미 옮긴 기록은 최신 상태로 고침 (지우는 동작은 없음)
 create or replace function public.import_legacy_attendance(payload jsonb) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
   x jsonb; sid uuid; emap jsonb := '{}'; created text[] := '{}';
-  n_leave int := 0; n_exc int := 0; n_rec int := 0; n_skip int := 0; n_corr int := 0; n_del int := 0;
+  n_leave int := 0; n_exc int := 0; n_rec int := 0; n_skip int := 0; n_corr int := 0;
 begin
   if not public.is_manager() then raise exception '대표·팀장만 옮길 수 있습니다'; end if;
   perform set_config('app.att_import', 'on', true);
@@ -903,6 +855,9 @@ begin
   -- 출퇴근 기록 (같은 날 통합 시스템에서 이미 출근한 기록이 있으면 그쪽을 남김)
   for x in select * from jsonb_array_elements(coalesce(payload->'records', '[]')) loop
     continue when not emap ? (x->>'employee_id');
+    -- 휴가·종일 기타 근태 때문에 자동으로 생긴 기록은 옮기지 않음 (통합 시스템은 신청 내역에서 바로 읽음)
+    continue when (x->>'clock_in') is null and (x->>'clock_out') is null
+              and ((x->>'leave_request_id') is not null or (x->>'attendance_exception_id') is not null);
     sid := (emap->>(x->>'employee_id'))::uuid;
     if exists (select 1 from public.attendance_records where staff_id = sid and work_date = (x->>'work_date')::date
                 and legacy_id is distinct from (x->>'id')::bigint) then
@@ -921,17 +876,6 @@ begin
       attendance_exception_id = excluded.attendance_exception_id, updated_at = excluded.updated_at;
     n_rec := n_rec + 1;
   end loop;
-
-  -- 예전에서 지워진 기록은 여기서도 지움 (예: 승인 취소된 휴가의 근태)
-  with d as (
-    delete from public.attendance_records r where r.legacy_id is not null
-       and not exists (select 1 from jsonb_array_elements(coalesce(payload->'records', '[]')) j where (j->>'id')::bigint = r.legacy_id)
-    returning 1)
-  select count(*) into n_del from d;
-  delete from public.attendance_exceptions e where e.legacy_id is not null
-     and not exists (select 1 from jsonb_array_elements(coalesce(payload->'exceptions', '[]')) j where (j->>'id')::bigint = e.legacy_id);
-  delete from public.leave_requests l where l.legacy_id is not null
-     and not exists (select 1 from jsonb_array_elements(coalesce(payload->'leaves', '[]')) j where (j->>'id')::bigint = l.legacy_id);
 
   -- 근태 수정 요청·변경 이력
   for x in select * from jsonb_array_elements(coalesce(payload->'corrections', '[]')) loop
@@ -965,7 +909,7 @@ begin
   on conflict (legacy_id) do nothing;
 
   perform set_config('app.att_import', '', true);
-  return jsonb_build_object('leaves', n_leave, 'exceptions', n_exc, 'records', n_rec, 'skipped_records', n_skip, 'removed_records', n_del,
+  return jsonb_build_object('leaves', n_leave, 'exceptions', n_exc, 'records', n_rec, 'skipped_records', n_skip,
                             'corrections', n_corr, 'created_staff', to_jsonb(created));
 end
 $$;
@@ -1018,8 +962,7 @@ revoke all on public.staff_hr, public.work_settings, public.work_setting_history
   public.leave_balance_history, public.leave_monthly_grants, public.leave_requests, public.attendance_exceptions, public.attendance_records,
   public.attendance_record_history, public.attendance_correction_requests from anon;
 
-revoke execute on function public.leave_requests_before(), public.leave_requests_sync_attendance(), public.attendance_exceptions_before(),
-  public.attendance_exceptions_sync(), public.attendance_records_before() from public, anon, authenticated;
+revoke execute on function public.leave_requests_before(), public.attendance_exceptions_before(), public.attendance_records_before() from public, anon, authenticated;
 revoke execute on function public.clock_in(uuid), public.clock_out(uuid), public.leave_decide(bigint, text, boolean, text),
   public.leave_withdraw(bigint), public.leave_cancel_request(bigint, text), public.leave_cancel_decide(bigint, text),
   public.attendance_exception_decide(bigint, text), public.attendance_record_save(uuid, date, timestamptz, timestamptz, text, text),

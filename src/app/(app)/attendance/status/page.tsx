@@ -24,12 +24,19 @@ export default async function AttendanceStatus(props: PageProps<"/attendance/sta
   const year = Number(ym.slice(0, 4));
   const { start, end } = monthDays(ym);
 
-  const [{ data: staff }, { data: records }, { data: summary }, editRow] = await Promise.all([
+  const [{ data: staff }, { data: records }, { data: summary }, editRow, { data: cal }] = await Promise.all([
     supabase.from("staff").select("id,name,is_active").order("name"),
     supabase.from("attendance_records").select("*").gte("work_date", start).lte("work_date", end).order("work_date", { ascending: false }),
     supabase.rpc("leave_summary", { p_year: year }),
     typeof sp.edit === "string" ? supabase.from("attendance_records").select("*").eq("id", Number(sp.edit)).maybeSingle() : Promise.resolve({ data: null }),
+    supabase.rpc("att_calendar", { p_start: start, p_end: end }),
   ]);
+  // 종일 휴가 일수: 승인된 휴가(반차는 0.5일)·종일 기타 근태를 달력에서 셈 (근태 기록을 따로 만들지 않음)
+  const offDays = new Map<string, number>();
+  for (const ev of (cal ?? []) as { staff_id: string | null; source: string; event_type: string }[]) {
+    if (!ev.staff_id || ev.source !== "leave") continue;
+    offDays.set(ev.staff_id, (offDays.get(ev.staff_id) ?? 0) + (ev.event_type.endsWith("_half") ? 0.5 : 1));
+  }
   const active = (staff ?? []).filter((s) => s.is_active);
   const name = new Map((staff ?? []).map((s) => [s.id, s.name] as const));
   const recs = records ?? [];
@@ -40,7 +47,7 @@ export default async function AttendanceStatus(props: PageProps<"/attendance/sta
       worked: r.filter((x) => x.clock_in).length,
       late: r.filter((x) => x.is_late).length,
       early: r.filter((x) => x.is_early_leave).length,
-      leave: r.filter((x) => LEAVE_DAY.includes(x.attendance_status)).length,
+      leave: (offDays.get(s.id) ?? 0) + r.filter((x) => LEAVE_DAY.includes(x.attendance_status) && !x.clock_in).length,
       noOut: r.filter((x) => x.clock_in && !x.clock_out && x.work_date < today).length,
     };
   });
@@ -65,7 +72,7 @@ export default async function AttendanceStatus(props: PageProps<"/attendance/sta
       <section className="glass overflow-x-auto p-5">
         <table className="w-full min-w-[560px] text-sm">
           <thead className="text-left text-xs text-ink-soft">
-            <tr><th className="py-1">직원</th><th className="text-right">출근일</th><th className="text-right">지각</th><th className="text-right">조퇴</th><th className="text-right">종일 휴가</th><th className="text-right">퇴근 누락</th><th></th></tr>
+            <tr><th className="py-1">직원</th><th className="text-right">출근일</th><th className="text-right">지각</th><th className="text-right">조퇴</th><th className="text-right">휴가(일)</th><th className="text-right">퇴근 누락</th><th></th></tr>
           </thead>
           <tbody className="divide-y divide-[var(--glass-border)] tabular-nums">
             {perStaff.map((s) => (
