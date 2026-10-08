@@ -102,7 +102,7 @@ export default async function Spend(props: PageProps<"/ads/spend">) {
                   <td className="px-4 py-2 font-medium">{r.advertiser_name ?? r.customer_id}</td>
                   {(manager && !who) && <td className="px-3 text-xs">{r.manager}</td>}
                   <td className="px-3 text-xs text-ink-soft">{r.client_group ?? "-"}</td>
-                  <td className="px-3">{r.gfa_only ? <span className="chip chip-info">GFA 전용</span> : <span className="chip chip-muted">{r.gfa_ad_account_no ? "검색광고 + GFA" : "검색광고"}</span>}</td>
+                  <td className="px-3">{r.gfa_only ? <span className="chip chip-info">GFA 전용</span> : <span className="chip chip-muted">검색광고 · 통합</span>}</td>
                   <td className="px-4 text-right font-semibold">{won(Number(r.month_cost))}원</td>
                 </tr>
               ))}
