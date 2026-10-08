@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { getMe } from "@/lib/supabase/server";
 import { fetchAccounts } from "@/lib/legacy-accounts";
-import { addAccount, editAccount, uploadTransferred } from "../accounts-actions";
-import { AddAccountForm, EditAccountForm, UploadForm } from "../accounts-forms";
+import { fetchCredentials } from "@/lib/legacy-credentials";
+import { addAccount, editAccount, saveApi, uploadTransferred } from "../accounts-actions";
+import { AddAccountForm, ApiForm, EditAccountForm, UploadForm } from "../accounts-forms";
 
 const SOURCE: Record<string, { label: string; chip: string }> = {
   auto: { label: "자동", chip: "chip-muted" },
@@ -17,15 +18,20 @@ export default async function Accounts(props: PageProps<"/ads/accounts">) {
   const sp = await props.searchParams;
   const { me } = await getMe();
   if (!me || me.role === "staff") return <p className="glass p-5 text-sm">광고주 등록·피이관 업로드는 대표·팀장만 할 수 있습니다.</p>;
-  const { data, error } = await fetchAccounts();
+  const [{ data, error }, creds] = await Promise.all([fetchAccounts(), fetchCredentials()]);
   if (!data) return <p className="glass p-5 text-sm text-danger">{error}</p>;
+  const credBy = new Map((creds.data?.advertisers ?? []).map((c) => [c.id, c]));
+  const apiCount = (creds.data?.advertisers ?? []).filter((c) => c.naver || c.meta).length;
+  const apiBad = (creds.data?.advertisers ?? []).filter((c) => c.naver?.status === "invalid" || c.meta?.status === "invalid").length;
 
   const q = typeof sp.q === "string" ? sp.q.trim().toLowerCase() : "";
   const src = typeof sp.s === "string" ? sp.s : "";
+  const apiFilter = typeof sp.api === "string" ? sp.api : "";
   const who = typeof sp.m === "string" ? sp.m : "";
   const list = data.advertisers.filter(
     (a) =>
       (!src || a.adcost_source === src) &&
+      (!apiFilter || (apiFilter === "on" ? !!(credBy.get(a.id)?.naver || credBy.get(a.id)?.meta) : apiFilter === "bad" ? credBy.get(a.id)?.naver?.status === "invalid" || credBy.get(a.id)?.meta?.status === "invalid" : !(credBy.get(a.id)?.naver || credBy.get(a.id)?.meta))) &&
       (!who || a.manager === who) &&
       (!q || `${a.name} ${a.customer_id ?? ""} ${a.gfa_ad_account_no ?? ""} ${a.meta_account ?? ""} ${a.group_name ?? ""}`.toLowerCase().includes(q)),
   );
@@ -67,7 +73,7 @@ export default async function Accounts(props: PageProps<"/ads/accounts">) {
 
       <section className="glass p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-bold">등록된 광고주 {data.advertisers.length}곳 <span className="text-xs font-normal text-ink-soft">· 피이관 {transferred}곳</span></h2>
+          <h2 className="font-bold">등록된 광고주 {data.advertisers.length}곳 <span className="text-xs font-normal text-ink-soft">· 피이관 {transferred}곳 · API 연동 {apiCount}곳{apiBad ? ` · API 확인 필요 ${apiBad}곳` : ""}</span>{creds.error && <span className="ml-2 text-xs font-normal text-danger">API 상태를 못 읽음: {creds.error}</span>}</h2>
           <form className="flex flex-wrap gap-2">
             <select name="m" defaultValue={who} className="field !w-auto" aria-label="담당자">
               <option value="">전체 담당자</option>
@@ -78,6 +84,12 @@ export default async function Accounts(props: PageProps<"/ads/accounts">) {
               <option value="transferred">피이관만</option>
               <option value="auto">자동</option>
               <option value="naver_api">네이버 API</option>
+            </select>
+            <select name="api" defaultValue={apiFilter} className="field !w-auto" aria-label="API">
+              <option value="">API 전체</option>
+              <option value="on">API 연동됨</option>
+              <option value="bad">API 확인 필요</option>
+              <option value="off">API 없음</option>
             </select>
             <input name="q" defaultValue={q} placeholder="광고주·ID·그룹" className="field !w-48" aria-label="검색" />
             <button className="btn btn-ghost">찾기</button>
@@ -94,10 +106,17 @@ export default async function Accounts(props: PageProps<"/ads/accounts">) {
                     {a.customer_id ? `SA ${a.customer_id}` : ""}{a.gfa_ad_account_no ? ` · GFA ${a.gfa_ad_account_no}` : ""}{a.meta_account ? ` · ${a.meta_account}` : ""}
                     {` · ${a.manager ?? "담당 없음"} · ${a.group_name ?? "그룹 없음"}`}{a.mapped_at ? ` · 매핑 ${a.mapped_at}` : ""}{a.transferred_at && a.adcost_source === "transferred" ? ` · 피이관 ${a.transferred_at}~` : ""}
                   </span>
-                  <span className="ml-auto text-xs text-brand">수정</span>
+                  {(() => {
+                    const c = credBy.get(a.id);
+                    const st = c?.naver?.status ?? c?.meta?.status;
+                    return st ? <span className={`chip ${st === "invalid" ? "chip-danger" : "chip-ok"} !text-[10.5px]`}>API {st === "invalid" ? "확인 필요" : "연동"}</span> : null;
+                  })()}
+                  <span className="ml-auto text-xs text-brand">수정 · API</span>
                 </summary>
-                <div className="mt-2">
+                <div className="mt-2 space-y-2">
                   <EditAccountForm action={editAccount.bind(null, a.id)} groups={data.groups} source={a.adcost_source} transferredAt={a.transferred_at} groupId={a.group_id} />
+                  {a.customer_id && <ApiForm action={saveApi.bind(null, a.id, "naver_searchad")} platform="naver_searchad" info={credBy.get(a.id)?.naver ?? null} accountId={a.customer_id} />}
+                  {a.meta_account && <ApiForm action={saveApi.bind(null, a.id, "meta")} platform="meta" info={credBy.get(a.id)?.meta ?? null} accountId={a.meta_account} />}
                 </div>
               </details>
             </li>

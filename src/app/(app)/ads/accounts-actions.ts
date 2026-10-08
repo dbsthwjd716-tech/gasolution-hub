@@ -37,10 +37,21 @@ export async function addAccount(_p: AccForm, f: FormData): Promise<AccForm> {
     transferred_at: s(f, "transferred_at"),
     meta_from: s(f, "meta_from"),
   };
-  const { error } = await createAccount(p);
+  const { data: id, error } = await createAccount(p);
   if (error) return { error };
   touch();
-  return { error: "", ok: `「${p.name}」 등록했습니다. 내일 아침 비즈머니 확인부터 반영됩니다.` };
+  const done = `「${p.name}」 등록했습니다. 내일 아침 비즈머니 확인부터 반영됩니다.`;
+  // 네이버 검색광고: API 라이선스·비밀키를 함께 넣었으면 바로 확인 후 저장
+  const apiKey = s(f, "api_key");
+  const secretKey = s(f, "secret_key");
+  if (p.type === "SA" && id && (apiKey || secretKey)) {
+    const { me } = await getMe();
+    const { saveCredential } = await import("@/lib/legacy-credentials");
+    const r = await saveCredential({ action: "save", advertiserId: Number(id), platform: "naver_searchad", accountId: p.customer_id, apiKey, secretKey, actor: me?.name });
+    if (r.error) return { error: `${done} 다만 API 확인에 실패해 API는 저장하지 않았습니다: ${r.error} (목록에서 다시 등록할 수 있습니다)` };
+    return { error: "", ok: `${done} API도 연동했습니다 (${r.data?.message ?? "확인 완료"}).` };
+  }
+  return { error: "", ok: done };
 }
 
 // 실적 기준·피이관 시작일·그룹 바꾸기
@@ -78,4 +89,26 @@ export async function uploadTransferred(_p: AccForm, f: FormData): Promise<AccFo
     error: "",
     ok: `${parsed.start} ~ ${parsed.end} · 계정 ${parsed.customers}곳 · ${saved}줄 저장 · 유상실적 합계 ${won(parsed.total)}원${parsed.skipped ? ` (날짜·계정 번호가 없는 ${parsed.skipped}줄은 건너뜀)` : ""}`,
   };
+}
+
+// 광고주 API 등록·다시 확인·해제 (네이버 검색광고 라이선스·비밀키 / Meta 토큰)
+//   실제로 네이버·Meta에 접속해 확인된 경우에만 저장됨
+export async function saveApi(advertiserId: number, platform: "naver_searchad" | "meta", _p: AccForm, f: FormData): Promise<AccForm> {
+  const { me } = await getMe();
+  if (!me || me.role === "staff") return { error: "API 등록은 대표·팀장만 할 수 있습니다." };
+  const action = s(f, "action") || "save";
+  const { saveCredential } = await import("@/lib/legacy-credentials");
+  const { data, error } = await saveCredential({
+    action,
+    advertiserId,
+    platform,
+    accountId: s(f, "account_id"),
+    apiKey: s(f, "api_key"),
+    secretKey: s(f, "secret_key"),
+    accessToken: s(f, "access_token"),
+    actor: me.name,
+  });
+  if (error) return { error };
+  revalidatePath("/ads/accounts");
+  return { error: "", ok: [data?.message, data?.warning].filter(Boolean).join(" · ") || "저장했습니다." };
 }

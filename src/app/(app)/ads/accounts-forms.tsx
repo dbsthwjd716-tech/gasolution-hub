@@ -72,6 +72,16 @@ export function AddAccountForm({ action, groups, employees }: { action: Action; 
         )}
         {type === "SA" && source === "transferred" && <label className="text-xs text-ink-soft">피이관 시작일 *<input type="date" name="transferred_at" className="field mt-1" required /></label>}
       </div>
+      {type === "SA" && source !== "transferred" && (
+        <div className="rounded-xl border border-dashed border-[#cddcff] bg-[#f7f9ff] p-3">
+          <p className="text-xs font-semibold text-brand">네이버 검색광고 API (선택 · 광고주 계정의 API 라이선스)</p>
+          <p className="mt-0.5 text-[11.5px] text-ink-soft">넣으면 등록하면서 네이버에 실제로 접속해 확인하고, 확인된 경우에만 암호화해 저장합니다. 비우면 담당자 공용 키로 수집합니다. 나중에 목록에서 넣어도 됩니다.</p>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <input name="api_key" autoComplete="off" placeholder="API 라이선스 (액세스 라이선스)" className="field" aria-label="API 라이선스" />
+            <input name="secret_key" type="password" autoComplete="new-password" placeholder="비밀키" className="field" aria-label="비밀키" />
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-3">
         <button className="btn" disabled={pending}>{pending ? "등록 중…" : "광고주 등록"}</button>
         <Msg s={state} />
@@ -102,6 +112,42 @@ export function EditAccountForm({ action, groups, source, transferredAt, groupId
       <button className="btn btn-ghost !px-3 !py-1.5 text-xs" disabled={pending}>{pending ? "…" : "저장"}</button>
       {state.error && <span className="text-xs text-danger">{state.error}</span>}
       {state.ok && <span className="text-xs text-[var(--ok-ink)]">{state.ok}</span>}
+    </form>
+  );
+}
+
+// 광고주 API 연동: 네이버 검색광고(라이선스·비밀키) 또는 Meta(토큰). 비밀값은 다시 보이지 않고 끝 4자리만
+export function ApiForm({ action, platform, info, accountId }: { action: Action; platform: "naver_searchad" | "meta"; info: { status: string; keyHint: string; statusMessage: string; lastVerifiedAt: string | null } | null; accountId: string }) {
+  const [state, formAction, pending] = useActionState(action, { error: "" });
+  const naver = platform === "naver_searchad";
+  const tone = !info ? "chip-muted" : info.status === "invalid" ? "chip-danger" : info.status === "valid" ? "chip-ok" : "chip-warn";
+  const label = !info ? "등록 안 됨 · 공용 키 사용" : info.status === "invalid" ? "확인 필요" : info.status === "valid" ? "정상" : "확인 전";
+  return (
+    <form action={formAction} className="space-y-2 rounded-lg border border-[#e4eaf2] p-3">
+      <p className="flex flex-wrap items-center gap-2 text-xs">
+        <b>{naver ? "네이버 검색광고 API" : "Meta API 토큰"}</b>
+        <span className={`chip ${tone}`}>{label}</span>
+        {info?.keyHint && <span className="text-ink-soft">끝자리 …{info.keyHint}</span>}
+        {info?.statusMessage && <span className="text-ink-soft">{info.statusMessage}</span>}
+      </p>
+      <input type="hidden" name="account_id" value={accountId} />
+      <div className="grid gap-2 sm:grid-cols-2">
+        {naver ? (
+          <>
+            <input name="api_key" autoComplete="off" placeholder={info ? "API 라이선스 (바꿀 때만)" : "API 라이선스"} className="field !py-1.5 text-xs" aria-label="API 라이선스" />
+            <input name="secret_key" type="password" autoComplete="new-password" placeholder={info ? "비밀키 (바꿀 때만)" : "비밀키"} className="field !py-1.5 text-xs" aria-label="비밀키" />
+          </>
+        ) : (
+          <input name="access_token" type="password" autoComplete="new-password" placeholder={info ? "액세스 토큰 (바꿀 때만)" : "액세스 토큰"} className="field !py-1.5 text-xs sm:col-span-2" aria-label="액세스 토큰" />
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button name="action" value="save" className="btn !px-3 !py-1.5 text-xs" disabled={pending}>{pending ? "네이버·Meta에 확인 중…" : info ? "바꾸기" : "확인 후 등록"}</button>
+        {info && <button name="action" value="verify" className="btn btn-ghost !px-3 !py-1.5 text-xs" disabled={pending}>다시 확인</button>}
+        {info && <button name="action" value="delete" className="text-xs text-danger underline" disabled={pending} onClick={(e) => { if (!window.confirm("API 연동을 해제할까요? 이후에는 담당자 공용 키로 수집합니다.")) e.preventDefault(); }}>연동 해제</button>}
+        {state.error && <span className="text-xs text-danger">{state.error}</span>}
+        {state.ok && <span className="text-xs text-[var(--ok-ink)]">{state.ok}</span>}
+      </div>
     </form>
   );
 }
