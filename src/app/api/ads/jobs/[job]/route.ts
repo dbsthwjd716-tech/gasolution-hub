@@ -1,5 +1,6 @@
 import { adsRpc } from "@/lib/ads-db";
 import { runImport } from "@/lib/ads-jobs/import";
+import { runImportSecrets } from "@/lib/ads-jobs/secrets";
 import { todayKST } from "@/lib/billing-calc";
 
 // 광고 수집 작업 주소: 데이터베이스 예약(pg_cron → pg_net)이나 대표·팀장 버튼이 수집기 열쇠와 함께 부름
@@ -7,6 +8,7 @@ export const maxDuration = 300;
 
 const JOBS: Record<string, (token: string) => Promise<unknown>> = {
   import: (t) => runImport(t),
+  "import-secrets": (t) => runImportSecrets(t),
 };
 
 export async function POST(request: Request, ctx: RouteContext<"/api/ads/jobs/[job]">) {

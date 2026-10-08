@@ -113,7 +113,8 @@ export async function createViralOrder(_p: FormState, f: FormData): Promise<Form
   if (error) return { error: friendly(error.message) };
   const { error: itemErr } = await supabase
     .from("viral_order_items")
-    .insert(parsed.items.map((i) => ({ ...i, id: undefined, order_id: data.id })));
+    // 새 줄에는 id 칸 자체를 빼야 함 (여러 줄을 한 번에 넣을 때 빈 id 칸이 있으면 자동 번호 대신 빈 값이 들어가 저장 실패)
+    .insert(parsed.items.map(({ id: _drop, ...i }) => { void _drop; return { ...i, order_id: data.id }; }));
   if (itemErr) return { error: friendly(itemErr.message) };
   revalidatePath("/viral");
   redirect(`/viral/${data.id}`);

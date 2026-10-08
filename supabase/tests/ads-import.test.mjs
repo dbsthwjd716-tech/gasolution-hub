@@ -24,5 +24,18 @@ export async function run() {
     if (Number(r.rows[0].n) !== 2) throw new Error('안 보임');
   });
   await expectBlocked('직원이 수집 작업 실행', () => as('kim', `select ads_run_job('bizmoney-snapshot')`));
+  await expectOk('비밀값은 금고에, 표에는 금고 id만 / 열쇠 있어야 꺼냄', async () => {
+    await as(null, `select ads_store_env($1, '{"NAVER_SOJUNG_API_KEY":"k1","EVIL":"x"}'::jsonb)`, [tok]);
+    await as(null, `select ads_store_credential($1, '{"advertiser_id":7,"platform":"naver_searchad","account_id":"111","api_key":"AK","secret":"SK","status":"valid"}'::jsonb)`, [tok]);
+    const row = (await db.query(`select * from ads_api_credentials`)).rows[0];
+    if (JSON.stringify(row).includes('"SK"') || JSON.stringify(row).includes('"AK"')) throw new Error('표에 비밀값');
+    const s = (await as(null, `select ads_collector_secrets($1) s`, [tok])).rows[0].s;
+    if (s.env.NAVER_SOJUNG_API_KEY !== 'k1' || s.env.EVIL || s.credentials[0].secret !== 'SK') throw new Error(JSON.stringify(s));
+  });
+  await expectBlocked('열쇠 없이 비밀값 꺼내기', () => as('lead', `select ads_collector_secrets('x')`));
+  await expectOk('직원은 API 상태 표도 안 보임', async () => {
+    const r = await as('kim', `select count(*) n from ads_api_credentials`);
+    if (Number(r.rows[0].n) !== 0) throw new Error('보임');
+  });
   return finish();
 }
