@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { getMe } from "@/lib/supabase/server";
 import { todayKST } from "@/lib/billing-calc";
 import { fetchPerfSpend } from "@/lib/ads-legacy";
+import { setHandover } from "../actions";
 
 const won = (v: number) => Math.round(v).toLocaleString("ko-KR");
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
@@ -23,12 +24,22 @@ export default async function Spend(props: PageProps<"/ads/spend">) {
   let to = isDate(sp.to) ? sp.to : today;
   if (to < from) [from, to] = [to, from];
 
-  const [perf, { data: viral }] = await Promise.all([
+  const [perf, { data: viral }, { data: flagged }] = await Promise.all([
     fetchPerfSpend(from, to),
     supabase.from("viral_orders_list").select("staff_name,company_name,sale_amount,paid_date").gte("paid_date", from).lte("paid_date", to).limit(5000),
+    supabase.from("handover_accounts").select("customer_id"),
   ]);
   if (!perf.data) return <p className="glass p-5 text-sm text-danger">{perf.error}</p>;
-  const d = perf.data;
+  const flags = new Set((flagged ?? []).map((f) => String(f.customer_id)));
+  // 인계건 금액: 통합 시스템에서 지정한 계정(지금 담당이 서진원이 아닐 때) 소진 전체 + 예전 대시보드 그룹 지정분
+  const d = {
+    ...perf.data,
+    naver: perf.data.naver.map((r) => ({
+      ...r,
+      flagged: flags.has(String(r.customer_id)),
+      handover_cost: flags.has(String(r.customer_id)) && r.manager !== HANDOVER_OWNER ? Number(r.cost) : Number(r.handover_cost ?? 0),
+    })),
+  };
 
   const names = [...new Set([...d.naver.map((r) => r.manager), ...d.meta.map((r) => r.manager), ...(viral ?? []).map((r) => r.staff_name ?? "")])]
     .filter(Boolean)
@@ -49,7 +60,7 @@ export default async function Spend(props: PageProps<"/ads/spend">) {
   const sum = rows.reduce((t, r) => ({ naver: t.naver + r.naver, meta: t.meta + r.meta, viral: t.viral + r.viral }), { naver: 0, meta: 0, viral: 0 });
   const total = sum.naver + sum.meta + sum.viral;
   const handoverRows = d.naver.filter((r) => r.handover_cost);
-  const showHandover = mine(HANDOVER_OWNER) && handoverRows.length > 0;
+  const showHandover = mine(HANDOVER_OWNER) && (handoverRows.length > 0 || (manager && who === HANDOVER_OWNER));
   const handover = handoverRows.reduce((t, r) => t + Number(r.handover_cost), 0);
 
   // 상세
@@ -143,14 +154,15 @@ export default async function Spend(props: PageProps<"/ads/spend">) {
       </section>
 
       {showHandover && (
-        <Detail title={`${HANDOVER_OWNER} 인계건`} sub="총 소진액 미포함 · 따로 보기" count={handoverRows.length} tone="handover">
-          <Table head={["광고주", "그룹", "지금 담당", "인계건 소진"]} right={[3]}>
+        <Detail title={`${HANDOVER_OWNER} 인계건`} sub={manager ? "총 소진액 미포함 · 아래 네이버 광고주별 표의 「인계건 지정」으로 추가" : "총 소진액 미포함 · 따로 보기"} count={handoverRows.length} tone="handover">
+          <Table head={["광고주", "그룹", "지금 담당", "인계건 소진", ...(manager ? [""] : [])]} right={[3]}>
             {handoverRows.map((r) => (
               <tr key={r.customer_id}>
                 <td className="px-4 py-2">{r.advertiser_name ?? r.customer_id}</td>
                 <td className="px-3 text-xs text-ink-soft">{r.group ?? "-"}</td>
                 <td className="px-3 text-xs">{r.manager}</td>
                 <td className="px-4 text-right font-semibold">{won(Number(r.handover_cost))}원</td>
+                {manager && <td className="pr-4 text-right">{r.flagged && <form action={setHandover.bind(null, String(r.customer_id), r.advertiser_name ?? "", false)}><button className="text-xs text-ink-soft underline hover:text-danger">해제</button></form>}</td>}
               </tr>
             ))}
           </Table>
@@ -159,15 +171,25 @@ export default async function Spend(props: PageProps<"/ads/spend">) {
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Detail title="네이버 광고주별" sub="유상실적 · 검색광고 + GFA" count={naverList.length}>
-          <Table head={["광고주", ...(who ? [] : ["담당"]), "소진액"]} right={[who ? 1 : 2]}>
+          <Table head={["광고주", ...(who ? [] : ["담당"]), "소진액", ...(manager ? ["인계건"] : [])]} right={[who ? 1 : 2]}>
             {naverList.map((r) => (
               <tr key={r.customer_id}>
                 <td className="px-4 py-2">
                   {r.advertiser_name ?? r.customer_id}
                   {r.handover_cost ? <span className="chip ml-1.5 bg-[#fff6dd] !text-[10.5px] text-[#7a5200]">인계건</span> : null}
+                  <span className="block text-[11px] text-ink-soft">{r.customer_id}{r.group ? ` · ${r.group}` : ""}</span>
                 </td>
                 {!who && <td className="px-3 text-xs">{r.manager}</td>}
                 <td className="px-4 text-right font-semibold">{won(Number(r.cost))}원</td>
+                {manager && (
+                  <td className="pr-4 text-right">
+                    {r.manager !== HANDOVER_OWNER && (
+                      <form action={setHandover.bind(null, String(r.customer_id), r.advertiser_name ?? "", !r.flagged)}>
+                        <button className={`whitespace-nowrap text-xs ${r.flagged ? "text-[#7a5200] underline" : "text-brand hover:underline"}`}>{r.flagged ? "해제" : "인계건 지정"}</button>
+                      </form>
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
           </Table>

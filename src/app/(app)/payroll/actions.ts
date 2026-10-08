@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getMe } from "@/lib/supabase/server";
 import { EMPTY_INPUTS, type Inputs } from "@/lib/payroll";
 import { fetchDashboardSpend } from "@/lib/dashboard";
+import { fetchPerfSpend } from "@/lib/ads-legacy";
 import { loadPayrollMonth, shiftYm, ymToDate } from "./data";
 
 export type FormState = { error: string; ok?: string };
@@ -178,11 +179,21 @@ export async function deleteTier(id: string) {
 }
 
 // 기존 대시보드에서 소진액 불러오기: 네이버 소진액(VAT 제외) → '네이버 소진액', 메타 소진액 ÷ 1.1 → '네이버 외 매체 소진액'
-// 진원 인계건(대시보드 그룹 급여 구분) 소진액은 서진원의 인계 계정 소진액으로. 카카오 등 대시보드에 없는 매체는 직접 더함
+// 진원 인계건: 통합 시스템 '광고비 실적'에서 지정한 인계건 계정(지금 담당이 서진원이 아닌 것)의 그 달 네이버 소진 → 서진원의 인계 계정 소진액
+//   (지정한 계정이 없으면 예전 대시보드 그룹 급여 구분 기준). 카카오 등 대시보드에 없는 매체는 직접 더함
 export async function importDashboardSpend(ym: string, _p: FormState, _f: FormData): Promise<FormState> {
   const { supabase } = await manager();
   const { rows, error } = await fetchDashboardSpend(ymToDate(ym));
   if (error) return { error };
+  const [{ data: flagged }, perf] = await Promise.all([
+    supabase.from("handover_accounts").select("customer_id,owner_name"),
+    fetchPerfSpend(ymToDate(ym), lastDay(ym)),
+  ]);
+  const hubHandover = new Map<string, number>();
+  for (const f of flagged ?? []) {
+    const r = perf.data?.naver.find((x) => String(x.customer_id) === String(f.customer_id));
+    if (r && r.manager !== f.owner_name) hubHandover.set(f.owner_name, (hubHandover.get(f.owner_name) ?? 0) + Number(r.cost));
+  }
   const { data: entries } = await supabase.from("payroll_entries").select("id,inputs,staff:staff_id(name)").eq("month", ymToDate(ym));
   const done: string[] = [];
   for (const e of entries ?? []) {
@@ -194,13 +205,18 @@ export async function importDashboardSpend(ym: string, _p: FormState, _f: FormDa
       ...(e.inputs as Partial<Inputs>),
       naver_spend: d.naver_spend,
       other_spend: Math.round(d.meta_spend / 1.1),
-      handover_spend: d.handover_spend,
+      handover_spend: hubHandover.get(name ?? "") ?? d.handover_spend,
     };
     const { error: ue } = await supabase.from("payroll_entries").update({ inputs }).eq("id", e.id);
     if (ue) return { error: friendly(ue.message) };
-    const ho = d.handover_spend;
+    const ho = hubHandover.get(name ?? "") ?? d.handover_spend;
     done.push(`${name} 네이버 ${d.naver_spend.toLocaleString("ko-KR")} · 메타 ${Math.round(d.meta_spend / 1.1).toLocaleString("ko-KR")}${ho ? ` · 인계 ${ho.toLocaleString("ko-KR")}` : ""}`);
   }
   touch(ym);
   return done.length ? { error: "", ok: `불러왔습니다 — ${done.join(" / ")}` } : { error: "이 달 급여 직원과 이름이 맞는 대시보드 담당자가 없습니다." };
+}
+
+function lastDay(ym: string) {
+  const [y, m] = ym.split("-").map(Number);
+  return `${ym}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`;
 }

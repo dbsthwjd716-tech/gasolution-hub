@@ -204,7 +204,7 @@ export function DashboardImport({ action }: { action: Action }) {
   return (
     <form action={formAction} className="space-y-1">
       <button className="btn btn-ghost" disabled={pending}>{pending ? "불러오는 중…" : "대시보드에서 소진액 불러오기"}</button>
-      <p className="text-[11px] text-ink-soft">네이버(이관 광고비)·메타 소진액, 그리고 대시보드에서 「진원 인계건」으로 지정한 그룹의 소진액(서진원 인계 계정, 100%)을 채웁니다. 카카오 등 대시보드에 없는 매체는 불러온 뒤 직접 더해 주세요.</p>
+      <p className="text-[11px] text-ink-soft">네이버(이관 광고비)·메타 소진액, 그리고 「광고비 실적」에서 인계건으로 지정한 계정의 소진액(서진원 인계 계정, 100%)을 채웁니다. 카카오 등 대시보드에 없는 매체는 불러온 뒤 직접 더해 주세요.</p>
       <Message state={state} />
     </form>
   );

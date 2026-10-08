@@ -15,3 +15,12 @@ export async function ackAlert(key: string) {
   revalidatePath("/ads/today");
   revalidatePath("/home");
 }
+
+// 서진원 인계건 지정 / 해제 (대표·팀장, 데이터베이스 규칙으로도 막힘)
+export async function setHandover(customerId: string, name: string, on: boolean) {
+  const { supabase, me } = await getMe();
+  if (!me || me.role === "staff" || !/^\d+$/.test(customerId)) return;
+  if (on) await supabase.from("handover_accounts").upsert({ customer_id: customerId, advertiser_name: name || null });
+  else await supabase.from("handover_accounts").delete().eq("customer_id", customerId);
+  revalidatePath("/ads/spend");
+}

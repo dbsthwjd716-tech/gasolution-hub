@@ -42,6 +42,12 @@ export async function run() {
     await view(null);
     await as('lead', `update promo_weeks set memo='y'`);
   });
+  await expectOk('인계건: 팀장 지정, 직원은 보기만', async () => {
+    await as('lead', `insert into handover_accounts(customer_id, advertiser_name) values ('123','테스트')`);
+    const r = await as('kim', `select * from handover_accounts`);
+    if (r.rows.length !== 1) throw new Error('안 보임');
+  });
+  await expectBlocked('직원이 인계건 지정', () => as('kim', `insert into handover_accounts(customer_id) values ('456')`));
   await expectOk('모든 표에 미리보기 저장 차단이 걸려 있음', async () => {
     const r = await db.query(`select t.tablename from pg_tables t where t.schemaname='public' and not exists (select 1 from pg_trigger g join pg_class c on c.oid=g.tgrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relname=t.tablename and g.tgname='zz_preview_block')`);
     if (r.rows.length) throw new Error('빠진 표: ' + r.rows.map((x) => x.tablename).join(', '));
