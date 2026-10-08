@@ -9,6 +9,15 @@ import { fetchRetry } from "./fetch-retry";
 export type DashboardSpend = { employee_name: string; naver_spend: number; handover_spend: number; meta_spend: number };
 
 export async function fetchDashboardSpend(month: string): Promise<{ rows: DashboardSpend[]; error?: string }> {
+  // 4단계부터: 통합 DB 광고 표에서 바로 (ADS_SOURCE=legacy 이면 예전 대시보드)
+  if (process.env.ADS_SOURCE !== "legacy") {
+    const { createClient } = await import("./supabase/server");
+    const { data, error } = await (await createClient()).rpc("ads_local_month_spend", { p_month: month });
+    if (error) return { rows: [], error: `광고비를 읽지 못했습니다: ${error.message}` };
+    return { rows: ((data ?? []) as DashboardSpend[]).map((d) => ({
+      employee_name: d.employee_name, naver_spend: Number(d.naver_spend) || 0, handover_spend: Number(d.handover_spend) || 0, meta_spend: Number(d.meta_spend) || 0,
+    })) };
+  }
   const url = process.env.DASHBOARD_SUPABASE_URL;
   const key = process.env.DASHBOARD_SUPABASE_KEY;
   const token = process.env.DASHBOARD_HUB_TOKEN;

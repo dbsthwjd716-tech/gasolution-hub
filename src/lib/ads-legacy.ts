@@ -4,8 +4,31 @@ import { fetchRetry } from "./fetch-retry";
 export const ADS_LEGACY_TAG = "ads-legacy";
 import type { BizRow, PrevRow, Run } from "./ads";
 
-// 예전 네이버 대시보드의 광고 운영 데이터를 읽어 옴 (읽기 전용 통로 hub_ads_export, 매일 아침 수집은 예전 대시보드가 계속 함)
+// 광고 운영 데이터 읽기
+//   기본: 통합 DB 광고 표 (통합 시스템이 직접 수집, ads_local_* 함수) — 4단계부터
+//   ADS_SOURCE=legacy 이면 예전 네이버 대시보드 읽기 통로(hub_*)로 되돌림 (문제가 생겼을 때 비상용)
+const LOCAL: Record<string, (s: string | null, e: string | null) => [string, Record<string, unknown>]> = {
+  bizmoney: () => ["ads_local_export", { p_kind: "bizmoney" }],
+  ops_status: () => ["ads_local_export", { p_kind: "ops_status" }],
+  perf: (s, e) => ["ads_local_perf_spend", { p_start: s, p_end: e }],
+  promo: (s, e) => ["ads_local_promo_spend", { p_start: s, p_end: e }],
+  roas: () => ["ads_local_roas_watch", {}],
+};
+export const legacyAdsMode = () => process.env.ADS_SOURCE === "legacy";
+
 async function call<T>(kind: string, start: string | null, end: string | null): Promise<{ data?: T; error?: string }> {
+  const local = LOCAL[kind];
+  if (local && !legacyAdsMode()) {
+    const { createClient } = await import("./supabase/server");
+    const [fn, args] = local(start, end);
+    const { data, error } = await (await createClient()).rpc(fn, args);
+    return error ? { error: `광고 데이터를 읽지 못했습니다: ${error.message}` } : { data: data as T };
+  }
+  return callLegacy<T>(kind, start, end);
+}
+
+// 예전 네이버 대시보드 읽기 통로 (비상용)
+async function callLegacy<T>(kind: string, start: string | null, end: string | null): Promise<{ data?: T; error?: string }> {
   const url = process.env.DASHBOARD_SUPABASE_URL;
   const key = process.env.DASHBOARD_SUPABASE_KEY;
   const token = process.env.DASHBOARD_HUB_TOKEN;

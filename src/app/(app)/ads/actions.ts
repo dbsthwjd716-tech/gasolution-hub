@@ -53,9 +53,28 @@ export async function ackAlerts(formData: FormData) {
 export type RefreshState = { error: string; ok?: string };
 export async function refreshBizmoney(_p: RefreshState, _f: FormData): Promise<RefreshState> {
   void _p; void _f;
-  const { me, preview } = await getMe();
+  const { me, preview, supabase } = await getMe();
   if (!me) return { error: "로그인이 필요합니다." };
   if (preview) return { error: "직원 화면 미리보기 중에는 새로고침할 수 없습니다." };
+  const { legacyAdsMode } = await import("@/lib/ads-legacy");
+  if (!legacyAdsMode()) {
+    // 통합 시스템 수집기를 바로 실행 → 끝날 때까지 실행 기록을 확인 (보통 10~30초)
+    const started = new Date(Date.now() - 2000).toISOString();
+    const { error } = await supabase.rpc("ads_run_job_with", { p_job: "bizmoney-snapshot", p_body: { force: true } });
+    if (error) return { error: `새로고침하지 못했습니다: ${error.message}` };
+    for (let i = 0; i < 80; i++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      const { data } = await supabase.from("ads_sync_runs").select("ok,summary").eq("job", "hub:bizmoney-snapshot").gte("started_at", started).order("started_at", { ascending: false }).limit(1);
+      const run = data?.[0];
+      if (run) {
+        revalidatePath("/ads");
+        revalidatePath("/ads/today");
+        revalidatePath("/home");
+        return run.ok ? { error: "", ok: "지금 시각 기준으로 다시 확인했습니다." } : { error: `일부만 확인했습니다: ${(run.summary as { error?: string })?.error ?? ""}` };
+      }
+    }
+    return { error: "아직 확인 중입니다. 1~2분 뒤 페이지를 새로고침해 보세요." };
+  }
   const token = process.env.DASHBOARD_HUB_TOKEN;
   if (!token) return { error: "예전 대시보드 연결 설정이 없습니다 (Vercel 환경변수)." };
   const base = process.env.DASHBOARD_APP_URL || "https://naver-bizmoney-dashboard.vercel.app";
