@@ -13,7 +13,7 @@ import { TrendChart } from "@/components/trend-chart";
 
 const won = (n: number) => Math.round(n).toLocaleString("ko-KR");
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
-const TREND_DAYS = 30;
+const TREND_DAYS = 28; // 4주: 같은 요일끼리 비교 (예전 대시보드 조회는 최대 62일)
 
 function nextMonth(ym: string) {
   const [y, m] = ym.split("-").map(Number);
@@ -104,7 +104,7 @@ export default async function Home() {
       : Promise.resolve(0),
     fetchBizmoney(),
     supabase.from("ads_alert_acks").select("alert_key").eq("ack_date", today),
-    fetchPromoSpend(addDays(today, -TREND_DAYS * 2 - 3), today),
+    fetchPromoSpend(addDays(today, -TREND_DAYS * 2 - 4), today),
     supabase.from("promo_weeks").select("id,title,week_start,week_end").lte("week_start", today).gte("week_end", today).maybeSingle(),
   ]);
 
