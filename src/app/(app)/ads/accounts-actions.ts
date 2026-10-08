@@ -13,10 +13,13 @@ async function manager() {
   const { me } = await getMe();
   return !!me && me.role !== "staff";
 }
-const touch = () => {
+// 저장 뒤: 화면 새로 그리기 + (나란히 비교 기간) 예전 대시보드에 저장한 내용을 통합 DB로 바로 맞추기 (뒤에서 20~40초)
+const touch = async () => {
   revalidatePath("/ads/accounts");
   revalidatePath("/ads");
   revalidatePath("/ads/spend");
+  const { supabase } = await getMe();
+  await supabase.rpc("ads_run_job", { p_job: "sync-ref" });
 };
 
 // 광고주(매체 계정) 등록: 네이버 검색광고 / GFA 전용 / 메타
@@ -39,7 +42,7 @@ export async function addAccount(_p: AccForm, f: FormData): Promise<AccForm> {
   };
   const { data: id, error } = await createAccount(p);
   if (error) return { error };
-  touch();
+  await touch();
   const done = `「${p.name}」 등록했습니다. 내일 아침 비즈머니 확인부터 반영됩니다.`;
   // 네이버 검색광고: API 라이선스·비밀키를 함께 넣었으면 바로 확인 후 저장
   const apiKey = s(f, "api_key");
@@ -59,7 +62,7 @@ export async function editAccount(id: number, _p: AccForm, f: FormData): Promise
   if (!(await manager())) return { error: "대표·팀장만 바꿀 수 있습니다." };
   const { error } = await updateAccount(id, { adcost_source: s(f, "adcost_source"), transferred_at: s(f, "transferred_at"), group_id: s(f, "group_id") });
   if (error) return { error };
-  touch();
+  await touch();
   return { error: "", ok: "저장했습니다." };
 }
 
@@ -84,7 +87,7 @@ export async function uploadTransferred(_p: AccForm, f: FormData): Promise<AccFo
     if (error) return { error: `${saved ? `${saved}줄 저장 후 ` : ""}멈췄습니다: ${error}` };
     saved += Number(data ?? 0);
   }
-  touch();
+  await touch();
   return {
     error: "",
     ok: `${parsed.start} ~ ${parsed.end} · 계정 ${parsed.customers}곳 · ${saved}줄 저장 · 유상실적 합계 ${won(parsed.total)}원${parsed.skipped ? ` (날짜·계정 번호가 없는 ${parsed.skipped}줄은 건너뜀)` : ""}`,
@@ -109,7 +112,7 @@ export async function saveApi(advertiserId: number, platform: "naver_searchad" |
     actor: me.name,
   });
   if (error) return { error };
-  revalidatePath("/ads/accounts");
+  await touch();
   return { error: "", ok: [data?.message, data?.warning].filter(Boolean).join(" · ") || "저장했습니다." };
 }
 
