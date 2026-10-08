@@ -64,7 +64,7 @@ export function EntryEditor({ action, profile, tiers, auto, inputs, extras, memo
         <p className="text-xs text-ink-soft">
           바이럴 (통합 시스템 자동, VAT 별도·인센티브 제외 상품 뺌): 담당 <b className="tabular-nums">{won(auto.viral_sales)}원</b>
           {auto.derived_sales > 0 && <> · 파생 <b className="tabular-nums">{won(auto.derived_sales)}원</b></>}
-          {lead && <> · 팀원 네이버 소진액 <b className="tabular-nums">{won(auto.team_naver)}원</b></>}
+          {lead && <> · 팀원 총 광고 취급고 <b className="tabular-nums">{won(auto.team_naver)}원</b></>}
           {profile.other_media_rate > 0 && <> · 팀장 네이버 외 매체 <b className="tabular-nums">{won(auto.lead_other_spend)}원</b></>}
         </p>
         <div className="space-y-1">
@@ -108,7 +108,7 @@ export function MonthForm({ action, goal, bonus, memo, readOnly }: { action: Act
   const [b, setB] = useState(won(bonus));
   return (
     <form action={formAction} className="grid items-end gap-2 sm:grid-cols-[1fr_1fr_2fr_auto]">
-      <MoneyInput name="team_goal" label="팀 목표 (팀원 네이버 소진액)" value={g} onChange={setG} disabled={readOnly} />
+      <MoneyInput name="team_goal" label="팀 목표 (팀원 총 광고 취급고)" value={g} onChange={setG} disabled={readOnly} />
       <MoneyInput name="team_bonus" label="달성 시 1인 지급" value={b} onChange={setB} disabled={readOnly} />
       <label className="text-xs text-ink-soft">메모<input name="memo" defaultValue={memo ?? ""} disabled={readOnly} className="field mt-1" /></label>
       {!readOnly && <button className="btn btn-ghost" disabled={pending}>{pending ? "…" : "저장"}</button>}
@@ -165,7 +165,7 @@ export function ProfileForm({ action, initial, staff }: { action: Action; initia
         {rate("viral_rate", "바이럴", "마감 소진액에 합산하지 않을 때")}
         {rate("derived_rate", "파생 바이럴")}
         {track === "lead" && rate("closing_rate", "마감 매출")}
-        {track === "lead" && rate("team_rate", "팀 수당", "팀원 네이버 소진액 기준")}
+        {track === "lead" && rate("team_rate", "팀 수당", "팀원 총 광고 취급고 기준")}
         {rate("markup_rate", "메타·구글 마크업", "수수료 VAT 별도 기준")}
         {rate("coupang_rate", "쿠팡")}
         {rate("other_media_rate", "네이버 외 매체", "본인 + 팀장 소진액 기준")}

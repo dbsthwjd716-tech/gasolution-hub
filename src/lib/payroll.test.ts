@@ -44,23 +44,27 @@ test("매니저: (본인 + 팀장) 네이버 외 매체 × 0.2%", () => {
   assert.equal(line(r, "other_media"), 20_000);
 });
 
-test("팀장: 마감 매출 1.5% + 팀원 네이버 소진액 0.1% + 마크업(VAT 포함 ÷ 1.1) 20%", () => {
+test("팀장: 마감 매출 1.5% + 팀원 총 광고 취급고 0.1% + 마크업(VAT 포함 ÷ 1.1) 20%", () => {
   const p: Profile = { ...base, track: "lead", base_pay: 3_000_000, closing_rate: 0.015, team_rate: 0.001, markup_rate: 0.2 };
   const team = teamAuto(
     [
       { profile: p, inputs: { ...EMPTY_INPUTS, naver_spend: 10_000_000, other_spend: 7_000_000 } },
-      { profile: { ...p, track: "sales_ae" }, inputs: { ...EMPTY_INPUTS, naver_spend: 100_000_000, handover_spend: 50_000_000 } },
-      { profile: { ...p, track: "nonsales_ae" }, inputs: { ...EMPTY_INPUTS, naver_spend: 20_000_000 } },
+      // 영업 AE: 네이버(인계 제외) + 메타, 바이럴 제외
+      { profile: { ...p, track: "sales_ae" }, inputs: { ...EMPTY_INPUTS, naver_spend: 100_000_000, handover_spend: 50_000_000, other_spend: 3_000_000 }, viral_sales: 9_000_000 },
+      // 비영업 AE: 네이버 + 메타 + 바이럴
+      { profile: { ...p, track: "nonsales_ae", viral_in_spend: true }, inputs: { ...EMPTY_INPUTS, naver_spend: 20_000_000, other_spend: 1_000_000 }, viral_sales: 2_000_000 },
+      // 매니저(비영업, 바이럴 별도): 네이버 + 메타
+      { profile: { ...p, track: "nonsales_ae", viral_in_spend: false }, inputs: { ...EMPTY_INPUTS, naver_spend: 5_000_000, other_spend: 1_000_000 }, viral_sales: 4_000_000 },
     ],
     100_000_000,
     100_000,
   );
-  assert.equal(team.teamNaver, 120_000_000);
+  assert.equal(team.teamNaver, 103_000_000 + 23_000_000 + 6_000_000);
   assert.equal(team.leadOther, 7_000_000);
   assert.equal(team.bonus, 100_000);
   const r = calcPay(p, { ...EMPTY_INPUTS, naver_spend: 10_000_000, other_spend: 7_000_000, markup_fee: 1_100_000 }, { ...EMPTY_AUTO, team_naver: team.teamNaver, team_bonus: team.bonus }, TIERS);
   assert.equal(line(r, "closing"), 150_000); // 네이버 외 매체는 팀장 마감 매출에 넣지 않음
-  assert.equal(line(r, "team"), 120_000);
+  assert.equal(line(r, "team"), 132_000);
   assert.equal(line(r, "markup"), 200_000);
   assert.equal(line(r, "team_bonus"), 100_000);
 });

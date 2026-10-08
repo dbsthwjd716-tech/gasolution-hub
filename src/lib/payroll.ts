@@ -16,7 +16,7 @@ export type Profile = {
   viral_rate: number; // 바이럴 판매가 × (마감 소진액에 합산하지 않을 때)
   derived_rate: number; // 파생 바이럴 판매가 × (예: 서진원 4%)
   closing_rate: number; // 팀장 마감 매출 × 1.5%
-  team_rate: number; // 팀장 팀 수당: 팀원 네이버 소진액 × 0.1%
+  team_rate: number; // 팀장 팀 수당: 팀원 총 광고 취급고 × 0.1% (teamSpendOf 기준)
   markup_rate: number; // 메타·구글 마크업 수수료(VAT 별도) × 20%
   coupang_rate: number; // 쿠팡 마크업 × 20%
   other_media_rate: number; // (본인 + 팀장) 네이버 외 매체 소진액 × 0.2% (매니저)
@@ -37,7 +37,7 @@ export const EMPTY_INPUTS: Inputs = { naver_spend: 0, handover_spend: 0, other_s
 export type Auto = {
   viral_sales: number; // 본인 담당 바이럴 판매가 (인센티브 제외 상품 빼고)
   derived_sales: number; // 내가 파생 실적자인 바이럴 판매가
-  team_naver: number; // 팀장 팀 수당 기준: 다른 팀원 네이버 소진액 합
+  team_naver: number; // 팀장 팀 수당 기준: 팀원 총 광고 취급고 합 (이름은 예전 그대로, 보관된 마감 결과와 맞추려고)
   lead_other_spend: number; // 팀장의 네이버 외 매체 소진액 (매니저 0.2% 기준)
   team_bonus: number; // 팀 목표 달성 시 1인 지급액 (미달이면 0)
 };
@@ -83,7 +83,7 @@ export function calcPay(p: Profile, i: Inputs, a: Auto, tiers: Tier[], extras: E
 
   if (p.track === "lead") {
     add("closing", `마감 매출 ${pct(p.closing_rate)}`, spend * p.closing_rate, `마감 소진액 ${won(spend)}원`);
-    add("team", `팀 수당 ${pct(p.team_rate)}`, a.team_naver * p.team_rate, `팀원 네이버 소진액 ${won(a.team_naver)}원`);
+    add("team", `팀 수당 ${pct(p.team_rate)}`, a.team_naver * p.team_rate, `팀원 총 광고 취급고 ${won(a.team_naver)}원`);
   } else {
     const tier = pickTier(tiers, p.track, spend);
     const rate = tier?.rate ?? 0;
@@ -110,10 +110,17 @@ export function calcPay(p: Profile, i: Inputs, a: Auto, tiers: Tier[], extras: E
   return { spend, lines, total };
 }
 
+// 팀원 한 명의 총 광고 취급고 (팀장 팀 수당·팀 목표 기준)
+//   본인 네이버(인계 계정 소진 제외) + 네이버 외 매체(메타 등) + 바이럴을 마감에 넣는 사람(비영업 AE)만 바이럴
+//   예: 서진원 = 네이버(인계건 미포함) + 메타 / 박규진 = 네이버 + 메타 + 바이럴 / 박영서(매니저) = 네이버 + 메타
+export function teamSpendOf(p: Profile, i: Inputs, viralSales: number) {
+  return i.naver_spend + i.other_spend + (p.viral_in_spend ? viralSales : 0);
+}
+
 // 그 달 팀 전체 계산에 필요한 값: 팀 수당·매니저 0.2%·팀 목표
-export function teamAuto(rows: { profile: Profile; inputs: Inputs }[], teamGoal: number, teamBonus: number) {
+export function teamAuto(rows: { profile: Profile; inputs: Inputs; viral_sales?: number }[], teamGoal: number, teamBonus: number) {
   const lead = rows.find((r) => r.profile.track === "lead");
-  const teamNaver = rows.filter((r) => r.profile.track !== "lead").reduce((t, r) => t + r.inputs.naver_spend, 0);
+  const teamNaver = rows.filter((r) => r.profile.track !== "lead").reduce((t, r) => t + teamSpendOf(r.profile, r.inputs, r.viral_sales ?? 0), 0);
   return {
     teamNaver,
     leadOther: lead?.inputs.other_spend ?? 0,

@@ -151,8 +151,7 @@ export function MonthEditor({ initial, isNew, auto, prevLabel, existing }: { ini
         <span className="text-xs text-ink-soft">{auto.ready ? `${prevLabel} 마감 기준 자동 목표: 달성자는 마감 + 상승폭을 절삭, 미달성자는 기존 목표 유지` : `${prevLabel}이 마감 확정되면 자동 목표가 계산됩니다`}</span>
       </div>
       <p className="text-xs text-ink-soft">
-        마감액 불러오기는 급여의 직군 기준입니다. 영업 AE(서진원) = 본인 네이버(인계건 미포함) + 메타 ÷ 1.1 · 비영업 AE(박규진·박영서)와 팀장 = 네이버 + 메타 ÷ 1.1 + 바이럴 판매가(총 취급고). 숫자는 고칠 수 있고, 저장해야 반영됩니다.
-      </p>
+        마감액 불러오기는 급여 설정과 같은 기준입니다. 서진원(영업 AE) = 네이버(인계건 미포함) + 메타 · 박규진(비영업 AE) = 네이버 + 메타 + 바이럴 · 박영서(매니저, 바이럴 별도) = 네이버 + 메타 · 팀장 = 네이버(카카오는 직접 더하기). 메타는 ÷ 1.1. 숫자는 고칠 수 있고, 저장해야 반영됩니다.</p>
 
       <label className="block space-y-1 text-sm font-semibold">
         월 메모

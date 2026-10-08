@@ -75,7 +75,7 @@ export async function loadPayrollMonth(supabase: SupabaseClient, ym: string) {
   const prof = new Map(profiles.map((p) => [p.staff_id, p]));
   const vir = new Map(((viral ?? []) as { staff_id: string; own_sales: number; derived_sales: number }[]).map((v) => [v.staff_id, v]));
   const base = (entries ?? []).map((e) => ({ e, profile: prof.get(e.staff_id) ?? null, inputs: readInputs(e.inputs) }));
-  const team = teamAuto(base.filter((b) => b.profile).map((b) => ({ profile: b.profile!, inputs: b.inputs })), num(month?.team_goal), num(month?.team_bonus));
+  const team = teamAuto(base.filter((b) => b.profile).map((b) => ({ profile: b.profile!, inputs: b.inputs, viral_sales: num(vir.get(b.e.staff_id)?.own_sales) })), num(month?.team_goal), num(month?.team_bonus));
   const closed = month?.status === "closed";
 
   const rows: EntryView[] = base.map(({ e, profile, inputs }) => {

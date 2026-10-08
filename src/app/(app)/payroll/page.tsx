@@ -69,7 +69,7 @@ export default async function Payroll(props: PageProps<"/payroll">) {
               <div className="flex flex-wrap items-center gap-3 text-sm">
                 <span className={`chip ${closed ? "chip-ok" : "chip-warn"}`}>{closed ? `마감 ${month.closed_at?.slice(0, 10) ?? ""}` : "작성 중"}</span>
                 <span>지급 예정 합계 <b className="tabular-nums">{won(sum)}원</b></span>
-                <span>팀원 네이버 소진액 <b className="tabular-nums">{won(team.teamNaver)}원</b>
+                <span>팀원 총 광고 취급고 <b className="tabular-nums">{won(team.teamNaver)}원</b>
                   {month.team_goal > 0 && <> / 목표 {won(month.team_goal)}원 ({Math.floor((team.teamNaver / month.team_goal) * 100)}%) {team.achieved ? <span className="chip chip-ok">달성</span> : <span className="chip chip-muted">미달</span>}</>}
                 </span>
               </div>
