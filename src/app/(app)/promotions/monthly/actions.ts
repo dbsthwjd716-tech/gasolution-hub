@@ -91,28 +91,37 @@ export async function saveConfig(_p: SaveState, f: FormData): Promise<SaveState>
   return { error: "", ok: "기준을 저장했습니다." };
 }
 
-// 광고비 실적에서 그 달 마감액 불러오기 (저장 전 입력칸만 채움)
-//   마감액 = 네이버 유상실적(검색광고 + GFA) + 메타 ÷ 1.1, 바이럴 제외
-//   서진원: 마감액 = 네이버 + 메타 + 인계건, 팀 산정액 = 네이버 + 메타 (인수인계 미포함)
-export type SpendFill = { name: string; actual: number; teamAmount: number | null }[];
+// 광고비 실적에서 그 달 마감액 불러오기 (저장 전 입력칸만 채움) — 급여의 직군(영업/비영업 AE) 기준
+//   영업 AE(서진원): 네이버(본인 담당, 인계건 미포함) + 메타 ÷ 1.1 — 바이럴은 급여에서 따로 %로 받으므로 목표에 안 넣음
+//   비영업 AE(박규진·박영서)·팀장·직군 미지정: 네이버 + 메타 ÷ 1.1 + 바이럴 판매가 = 총 취급고
+//   인계건 계정은 지금 담당자(비영업 AE)의 네이버에 그대로 들어감
+export type SpendFill = { name: string; actual: number; teamAmount: null; basis: string }[];
 export async function loadSpend(ym: string): Promise<{ rows?: SpendFill; through?: string | null; error?: string }> {
   const supabase = await manager();
   if (!supabase || !YM.test(ym)) return { error: "대표·팀장만 불러올 수 있습니다." };
   const [y, m] = ym.split("-").map(Number);
+  const from = `${ym}-01`;
   const last = `${ym}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`;
-  const [perf, { data: flagged }] = await Promise.all([fetchPerfSpend(`${ym}-01`, last), supabase.from("handover_accounts").select("customer_id,owner_name")]);
+  const [perf, { data: viral }, { data: profiles }] = await Promise.all([
+    fetchPerfSpend(from, last),
+    supabase.from("viral_orders_list").select("staff_name,sale_amount").gte("paid_date", from).lte("paid_date", last).limit(5000),
+    supabase.from("payroll_profiles").select("track, staff:staff_id(name)"),
+  ]);
   if (!perf.data) return { error: perf.error ?? "광고비를 불러오지 못했습니다." };
-  const by = new Map<string, { naver: number; meta: number; handover: number }>();
-  const row = (n: string) => by.get(n) ?? (by.set(n, { naver: 0, meta: 0, handover: 0 }), by.get(n)!);
+  const track = new Map((profiles ?? []).map((p) => [(p.staff as unknown as { name: string } | null)?.name ?? "", p.track as string]));
+  const by = new Map<string, { naver: number; meta: number; viral: number }>();
+  const row = (n: string) => by.get(n) ?? (by.set(n, { naver: 0, meta: 0, viral: 0 }), by.get(n)!);
   for (const r of perf.data.naver) row(r.manager).naver += Number(r.cost);
   for (const r of perf.data.meta) row(r.manager).meta += Number(r.spend) / 1.1;
-  for (const f of flagged ?? []) {
-    const r = perf.data.naver.find((x) => String(x.customer_id) === String(f.customer_id));
-    if (r && r.manager !== f.owner_name) row(f.owner_name).handover += Number(r.cost);
-  }
+  for (const r of viral ?? []) if (r.staff_name) row(r.staff_name).viral += Number(r.sale_amount);
   const rows: SpendFill = [...by.entries()].map(([name, v]) => {
-    const base = Math.round(v.naver + v.meta);
-    return v.handover ? { name, actual: base + Math.round(v.handover), teamAmount: base } : { name, actual: base, teamAmount: null };
+    const sales = track.get(name) === "sales_ae";
+    return {
+      name,
+      actual: Math.round(v.naver + v.meta + (sales ? 0 : v.viral)),
+      teamAmount: null,
+      basis: sales ? "영업 AE: 네이버 + 메타" : "네이버 + 메타 + 바이럴",
+    };
   });
   return { rows, through: perf.data.naver_through };
 }

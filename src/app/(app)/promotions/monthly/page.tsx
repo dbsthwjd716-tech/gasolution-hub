@@ -181,7 +181,7 @@ function MonthView({ c, rows, cfg, manager, editHref }: { c: NonNullable<ReturnT
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
             <h2 className="text-sm font-bold">개인별 {fin ? "판정" : "기준선"}</h2>
-            <p className="text-xs text-ink-soft">{fin ? "목표 달성, 상승분 유지, 신규 상승 후보를 팀원별로 판정합니다." : "이번 달 마감에서 넘겨야 할 기준 금액입니다."} 팀 산정 = 서진원(인수인계 미포함) + 박규진 + 박영서</p>
+            <p className="text-xs text-ink-soft">{fin ? "목표 달성, 상승분 유지, 신규 상승 후보를 팀원별로 판정합니다." : "이번 달 마감에서 넘겨야 할 기준 금액입니다."} 마감액: 영업 AE = 네이버(인계건 미포함) + 메타 · 비영업 AE = 네이버 + 메타 + 바이럴</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <CopyNotice text={goalNotice(c)} label="① 개인 목표 공지 복사" />
