@@ -66,3 +66,13 @@ test("비즈머니 현황 정렬: 기본 소진 많은 순, 비즈머니·일평
   assert.deepEqual(sortBy(rows, "bizmoney", "desc").map((r) => r.customer_id), ["a", "b", "c"]);
   assert.deepEqual(sortBy(rows, "daily", "desc").map((r) => r.customer_id), ["b", "a", "c"]);
 });
+
+test("수익률 급변: 어제 vs 그 전 7일, 작은 광고비는 제외", async () => {
+  const { roasActions } = await import("./ads.ts");
+  const row = (y_cost: number, y_value: number, b_cost: number, b_value: number, b_days = 7) => ({ customer_id: "1", advertiser_name: "가", manager: "김", y_cost, y_value, b_cost, b_value, b_days });
+  assert.equal(roasActions([row(20000, 20000, 140000, 700000)], "2026-10-07", "2026-10-08")[0].type, "roas_down"); // 500% → 100%
+  assert.equal(roasActions([row(20000, 200000, 140000, 700000)], "2026-10-07", "2026-10-08")[0].type, "roas_up"); // 500% → 1000%
+  assert.equal(roasActions([row(20000, 110000, 140000, 700000)], "2026-10-07", "2026-10-08").length, 0); // 550%
+  assert.equal(roasActions([row(5000, 0, 140000, 700000)], "2026-10-07", "2026-10-08").length, 0); // 어제 광고비 적음
+  assert.equal(roasActions([row(20000, 0, 140000, 700000, 2)], "2026-10-07", "2026-10-08").length, 0); // 기록 부족
+});

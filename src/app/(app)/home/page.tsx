@@ -10,6 +10,7 @@ import { fetchBizmoney, fetchPromoSpend } from "@/lib/ads-legacy";
 import { addDays, dailySeries, trendEnd } from "@/lib/trend";
 import { Icon, type IconName } from "@/components/sidebar-nav";
 import { TrendChart } from "@/components/trend-chart";
+import { dueToday, type Routine } from "@/lib/routines";
 
 const won = (n: number) => Math.round(n).toLocaleString("ko-KR");
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
@@ -85,7 +86,7 @@ export default async function Home() {
   const to = nextMonth(ym);
 
   const settle = supabase.from("billing_documents").select("id,doc_type,status,total_amount,payment_received,staff_id,recipient_company_name,document_date");
-  const [open, { data: docs }, { data: contracts }, { data: viral }, { data: unpaidViral }, stmts, { data: att }, attWait, biz, { data: adsAcks }, spend, { data: promo }] = await Promise.all([
+  const [open, { data: docs }, { data: contracts }, { data: viral }, { data: unpaidViral }, stmts, { data: att }, attWait, biz, { data: adsAcks }, spend, { data: promo }, { data: routines }, { data: rChecks }] = await Promise.all([
     loadOpenLeads(supabase),
     isManager ? settle.in("status", ["requested", "lead_approved", "approved", "issued", "rejected"]).limit(1000) : settle.eq("staff_id", me.id).in("status", ["draft", "rejected", "approved", "issued"]).limit(1000),
     supabase.from("contracts").select("id,status,staff_id,client:clients(company_name)").in("status", ["draft", "signing", "rejected"]).limit(500),
@@ -106,7 +107,13 @@ export default async function Home() {
     supabase.from("ads_alert_acks").select("alert_key").eq("ack_date", today),
     fetchPromoSpend(addDays(today, -TREND_DAYS * 2 - 4), today),
     supabase.from("promo_weeks").select("id,title,week_start,week_end").lte("week_start", today).gte("week_end", today).maybeSingle(),
+    supabase.from("ops_routines").select("id,kind,weekdays,month_day,due_date,start_date,is_active,staff_id").eq("is_active", true),
+    supabase.from("ops_routine_checks").select("routine_id,due_date").gte("due_date", addDays(today, -46)),
   ]);
+  // 루틴·약속: 직원은 본인 것만 (대표·팀장 홈은 본인 것)
+  const doneBy = new Map<string, Set<string>>();
+  for (const c of rChecks ?? []) doneBy.set(c.routine_id, (doneBy.get(c.routine_id) ?? new Set()).add(c.due_date));
+  const routineDue = ((routines ?? []) as (Routine & { staff_id: string })[]).filter((r) => r.staff_id === me.id && dueToday(r, today, doneBy.get(r.id) ?? new Set())).length;
 
   // 광고 운영 (직원은 본인 담당만)
   const bizRows = (biz.data?.rows ?? []).filter((r) => isManager || r.manager === me.name);
@@ -153,6 +160,7 @@ export default async function Home() {
 
   const sumOf = (rows: { total_amount: number }[]) => (rows.length ? `${won(rows.reduce((t, x) => t + Number(x.total_amount), 0))}원` : undefined);
   const tasks: Task[] = [
+    { href: "/ads/today", icon: "check", label: "내 루틴 · 약속", sub: "보고서 발송·순위 체크 등 광고주와 약속한 일", count: routineDue, tone: "info" },
     { href: "/ads/today", icon: "pulse", label: isManager ? "광고 점검 필요" : "점검할 내 광고주", sub: adsDanger ? `비즈머니 위험 ${adsDanger}건 포함` : "비즈머니 · 소진 변화 알림", count: adsOpen.length, tone: adsDanger ? "danger" : "warn" },
     ...(isManager
       ? [

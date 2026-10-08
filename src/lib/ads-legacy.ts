@@ -11,6 +11,7 @@ async function call<T>(kind: string, start: string | null, end: string | null): 
     const [fn, body] =
       kind === "promo" ? ["hub_promo_spend", { p_start: start, p_end: end, p_token: token }]
       : kind === "naver_split" ? ["hub_naver_split", { p_token: token }]
+      : kind === "roas" ? ["hub_roas_watch", { p_token: token }]
       : kind === "perf" ? ["hub_perf_spend", { p_start: start, p_end: end, p_token: token }]
       : ["hub_ads_export", { p_kind: kind, p_start: start, p_end: end, p_token: token }];
     const res = await fetch(`${url}/rest/v1/rpc/${fn}`, {
@@ -63,3 +64,6 @@ export type PerfNaver = { manager: string; customer_id: string; advertiser_name:
 export type PerfMeta = { manager: string; account_name: string; advertiser_name: string | null; spend: number; days: number };
 export type PerfSpend = { naver_through: string | null; meta_through: string | null; naver: PerfNaver[]; meta: PerfMeta[] };
 export const fetchPerfSpend = (start: string, end: string) => call<PerfSpend>("perf", start, end);
+
+// 오늘의 운영: 광고주별 어제 검색광고 수익률과 그 전 7일
+export const fetchRoasWatch = () => call<{ date: string | null; rows: import("./ads").RoasRow[] }>("roas", null, null);

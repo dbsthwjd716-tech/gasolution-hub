@@ -101,7 +101,7 @@ export const OPS_RULES = { stoppedMinDailyAverage: 10000, changeRatio: 0.5, chan
 
 export type OpsAction = {
   key: string;
-  type: "bizmoney_danger" | "bizmoney_warning" | "bizmoney_failed" | "spend_stopped" | "spend_change";
+  type: "bizmoney_danger" | "bizmoney_warning" | "bizmoney_failed" | "spend_stopped" | "spend_change" | "roas_up" | "roas_down";
   severity: 1 | 2 | 3;
   label: string;
   title: string;
@@ -191,4 +191,36 @@ export function sortBy(rows: BizRow[], key: SortKey, dir: SortDir) {
     if (x == null || y == null) return x == null && y == null ? 0 : x == null ? 1 : -1;
     return sign * (x - y) || netCost(b) - netCost(a) || String(a.advertiser_name ?? "").localeCompare(String(b.advertiser_name ?? ""), "ko");
   });
+}
+
+// ------------------------------------------------------------------ 수익률(ROAS) 급변: 어제 vs 그 전 7일 (검색광고)
+//   어제 광고비 1만원 이상, 그 전 7일 광고비 3만원 이상·3일 이상 기록이 있을 때만
+//   수익률 = 전환매출 ÷ 광고비(VAT 포함) × 100. 그 전 대비 ±50% 이상 바뀌면 알림
+export type RoasRow = { customer_id: string; advertiser_name: string | null; manager: string | null; y_cost: number | null; y_value: number | null; b_cost: number | null; b_value: number | null; b_days: number | null };
+export const ROAS_RULES = { minYesterdayCost: 10000, minBaseCost: 30000, minBaseDays: 3, changeRatio: 0.5 };
+
+export function roasActions(rows: RoasRow[], date: string, today: string): OpsAction[] {
+  const out: OpsAction[] = [];
+  for (const r of rows) {
+    const yc = n(r.y_cost), yv = n(r.y_value), bc = n(r.b_cost), bv = n(r.b_value);
+    if (yc < ROAS_RULES.minYesterdayCost || bc < ROAS_RULES.minBaseCost || n(r.b_days) < ROAS_RULES.minBaseDays) continue;
+    const y = (yv / yc) * 100;
+    const b = (bv / bc) * 100;
+    const up = b === 0 ? y >= 100 : (y - b) / b >= ROAS_RULES.changeRatio;
+    const down = b > 0 && (y - b) / b <= -ROAS_RULES.changeRatio;
+    if (!up && !down) continue;
+    const type = up ? "roas_up" : "roas_down";
+    out.push({
+      key: `${type}:${r.customer_id}:${today}`,
+      type,
+      severity: down ? 2 : 3,
+      label: up ? "수익률 상승" : "수익률 하락",
+      title: `어제(${Number(date.slice(5, 7))}/${Number(date.slice(8))}) 수익률 ${Math.round(y)}% · 그 전 ${n(r.b_days)}일 ${Math.round(b)}%`,
+      detail: `어제 광고비 ${won(yc)} · 전환매출 ${won(yv)} (검색광고, 광고비 VAT 포함)`,
+      customerId: String(r.customer_id),
+      advertiserName: r.advertiser_name || String(r.customer_id),
+      manager: r.manager || "",
+    });
+  }
+  return out.sort((a, b) => a.severity - b.severity || a.advertiserName.localeCompare(b.advertiserName, "ko"));
 }

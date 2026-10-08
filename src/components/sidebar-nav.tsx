@@ -14,6 +14,7 @@ export const GROUPS: Group[] = [
     label: "광고 운영",
     items: [
       { href: "/ads/today", label: "오늘의 운영", icon: "pulse" },
+      { href: "/ads/routines", label: "루틴 · 약속", icon: "check" },
       { href: "/ads", label: "비즈머니 현황", icon: "wallet" },
       { href: "/ads/spend", label: "광고비 실적", icon: "chart" },
     ],

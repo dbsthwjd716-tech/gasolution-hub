@@ -4,6 +4,7 @@ import Link from "next/link";
 export default function AdsLayout({ children }: LayoutProps<"/ads">) {
   const tabs = [
     { href: "/ads/today", label: "오늘의 운영" },
+    { href: "/ads/routines", label: "루틴 · 약속" },
     { href: "/ads", label: "비즈머니 현황" },
     { href: "/ads/spend", label: "광고비 실적" },
   ];
