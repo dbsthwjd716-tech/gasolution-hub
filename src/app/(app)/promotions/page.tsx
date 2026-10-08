@@ -27,7 +27,20 @@ function Bar({ p }: { p: { rate: number | null; achieved: boolean } }) {
   );
 }
 
-function Card({ name, r, sub }: { name: string; r: PersonResult | TeamResult; sub?: string }) {
+function Card({ name, r, sub, notStarted }: { name: string; r: PersonResult | TeamResult; sub?: string; notStarted: boolean }) {
+  const baseNote = r.baseDays < 7 ? ` (기준 주 ${r.baseDays}일치, 집계 중)` : "";
+  if (notStarted)
+    return (
+      <div className="rounded-xl border border-[var(--glass-border)] bg-white/70 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <p className="font-bold">{name}</p>
+          <span className="chip chip-muted">시작 전</span>
+        </div>
+        {sub && <p className="text-xs text-ink-soft">{sub}</p>}
+        <p className="mt-2 text-sm">상승 목표 <b className="tabular-nums">+{won(r.increment)}</b></p>
+        <p className="text-xs text-ink-soft tabular-nums">{r.baseDays ? `목표 일소진 ${won(r.target)} · 기준 ${won(r.base)}${baseNote}` : "기준 주가 끝나면 목표 금액이 정해집니다"}</p>
+      </div>
+    );
   return (
     <div className={`rounded-xl border p-4 ${r.achieved ? "border-[var(--ok-ink)]/40 bg-[var(--ok-bg)]/50" : "border-[var(--glass-border)] bg-white/70"}`}>
       <div className="flex items-center justify-between gap-2">
@@ -36,7 +49,7 @@ function Card({ name, r, sub }: { name: string; r: PersonResult | TeamResult; su
       </div>
       {sub && <p className="text-xs text-ink-soft">{sub}</p>}
       <p className="mt-2 text-2xl font-bold tabular-nums">{won(r.current)}</p>
-      <p className="text-xs text-ink-soft tabular-nums">목표 {won(r.target)} · 기준 {won(r.base)} + {won(r.increment)}</p>
+      <p className="text-xs text-ink-soft tabular-nums">목표 {won(r.target)} · 기준 {won(r.base)} + {won(r.increment)}{baseNote}</p>
       <div className="mt-2"><Bar p={r} /></div>
       <p className={`mt-1 text-xs tabular-nums ${r.gap >= 0 ? "text-[var(--ok-ink)]" : "text-danger"}`}>
         {r.gap >= 0 ? `목표보다 +${won(r.gap)}` : `목표까지 ${won(-r.gap)} 부족`} · 상승 {r.rise >= 0 ? "+" : ""}{won(r.rise)}{r.rate != null ? ` (${r.rate}%)` : ""}
@@ -56,7 +69,10 @@ export default async function Promotions() {
     supabase.from("staff").select("id,name,role").eq("is_active", true).order("name"),
     manager ? supabase.from("promo_history").select("week_id,what,changed_at,before,after,staff:changed_by(name)").order("changed_at", { ascending: false }).limit(40) : Promise.resolve({ data: [] }),
   ]);
-  const list = weeks ?? [];
+  // 진행 중 → 다가오는 주(가까운 순) → 지난 주(최근 순)
+  const all = weeks ?? [];
+  const rank = (w: WeekRow) => (w.week_start <= today && w.week_end >= today ? 0 : w.week_start > today ? 1 : 2);
+  const list = [...all].sort((a, b) => rank(a) - rank(b) || (rank(a) === 1 ? a.week_start.localeCompare(b.week_start) : b.week_start.localeCompare(a.week_start)));
   const live = list.filter((w) => !w.closed_at);
   const oldest = live.map((w) => w.base_start).sort()[0];
   const newest = live.map((w) => w.week_end).sort().reverse()[0];
@@ -97,7 +113,7 @@ export default async function Promotions() {
               <div>
                 <h2 className="text-lg font-bold">{w.title || `${md(w.week_start)}~${md(w.week_end)} 주`} <span className={`chip ml-1 ${state === "진행 중" ? "chip-info" : state === "마감" ? "chip-muted" : "chip-warn"}`}>{state}</span></h2>
                 <p className="text-xs text-ink-soft">기준 {md(w.base_start)}~{md(w.base_end)} 일평균 → 평가 {md(w.week_start)}~{md(w.week_end)} 일평균{r && !r.complete && state !== "예정" ? ` · ${Math.min(...r.people.map((p) => p.days), 7)}일치 반영 (데이터가 들어오는 대로 갱신)` : ""}</p>
-                <p className="mt-1 text-sm">🎁 개인 달성: {Number(w.reward_personal_hours)}시간 조기퇴근 ({w.reward_personal}) · 팀 달성: 금요일 {Number(w.reward_team_hours)}시간 조기퇴근 ({w.reward_team})</p>
+                <p className="mt-1 text-sm">🎁 개인 달성 <b>{Number(w.reward_personal_hours)}시간</b> 조기퇴근 · 팀 달성 금요일 <b>{Number(w.reward_team_hours)}시간</b> 조기퇴근 <span className="text-xs text-ink-soft">({w.reward_personal} / {w.reward_team})</span></p>
                 {w.memo && <p className="text-xs text-ink-soft">{w.memo}</p>}
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -110,8 +126,8 @@ export default async function Promotions() {
 
             {r && targets.length > 0 ? (
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                {r.people.map((p) => <Card key={p.staff_id} name={p.name} r={p} sub={p.scope === "naver" ? "네이버 (인계건·바이럴 제외)" : "네이버 + 메타 (바이럴 제외)"} />)}
-                <Card name="팀" r={r.team} sub={`${r.team.members.join("·")} 합산`} />
+                {r.people.map((p) => <Card key={p.staff_id} name={p.name} r={p} notStarted={state === "예정"} sub={p.scope === "naver" ? "네이버 (인계건·바이럴 제외)" : "네이버 + 메타 (바이럴 제외)"} />)}
+                <Card name="팀" r={r.team} notStarted={state === "예정"} sub={`${r.team.members.join("·")} 합산`} />
               </div>
             ) : (
               <p className="text-sm text-ink-soft">{targets.length ? "광고비를 불러오지 못했습니다." : "대상이 없습니다."}</p>

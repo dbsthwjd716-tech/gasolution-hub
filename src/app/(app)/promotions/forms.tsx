@@ -95,10 +95,10 @@ export function WeekForm({ action, week, targets, individualSum }: { action: Act
         <label className="text-xs text-ink-soft">팀 달성 금요일 조기퇴근 (시간)
           <input name="reward_team_hours" inputMode="decimal" defaultValue={week.reward_team_hours} className="field mt-1 text-right" />
         </label>
-        <label className="text-xs text-ink-soft">개인 달성 혜택 설명
+        <label className="text-xs text-ink-soft">개인 달성 사용 방법
           <input name="reward_personal" defaultValue={week.reward_personal} className="field mt-1" />
         </label>
-        <label className="text-xs text-ink-soft">팀 달성 혜택 설명
+        <label className="text-xs text-ink-soft">팀 달성 사용 방법
           <input name="reward_team" defaultValue={week.reward_team} className="field mt-1" />
         </label>
       </div>

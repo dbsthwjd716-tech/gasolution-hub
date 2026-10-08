@@ -16,6 +16,7 @@ export type PersonResult = {
   target: number;
   current: number;
   days: number; // 이번 주 집계된 날 수 (7이면 마감 가능)
+  baseDays: number; // 기준 주 집계된 날 수 (7보다 적으면 기준값이 아직 바뀌는 중)
   rise: number;
   gap: number; // 마감 일소진 − 목표
   rate: number | null; // 실제 상승 ÷ 상승 목표 × 100
@@ -66,7 +67,7 @@ export function computePromo(data: PromoSpend, targets: PromoTarget[], base: Ran
     const target = b.avg + t.increment;
     return {
       staff_id: t.staff_id, name: t.name, scope: t.scope, increment: t.increment, in_team: t.in_team,
-      base: b.avg, target, current: c.avg, days: c.days,
+      base: b.avg, target, current: c.avg, days: c.days, baseDays: b.days,
       rise: c.avg - b.avg, gap: c.avg - target,
       rate: t.increment > 0 ? Math.round(((c.avg - b.avg) / t.increment) * 1000) / 10 : null,
       achieved: c.days > 0 && c.avg >= target,
@@ -79,6 +80,7 @@ export function computePromo(data: PromoSpend, targets: PromoTarget[], base: Ran
     members: members.map((p) => p.name),
     increment: teamIncrement, base: tb, target: tb + teamIncrement, current: tc,
     days: Math.min(...members.map((p) => p.days), fullDays),
+    baseDays: Math.min(...members.map((p) => p.baseDays), 7),
     rise: tc - tb, gap: tc - (tb + teamIncrement),
     rate: teamIncrement > 0 ? Math.round(((tc - tb) / teamIncrement) * 1000) / 10 : null,
     achieved: members.length > 0 && members.every((p) => p.days > 0) && tc >= tb + teamIncrement,
