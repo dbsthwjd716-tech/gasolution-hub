@@ -28,3 +28,6 @@ async function call<T>(method: "GET" | "POST", body?: Record<string, unknown>): 
 
 export const fetchCredentials = () => call<{ advertisers: CredRow[] }>("GET");
 export const saveCredential = (b: Record<string, unknown>) => call<{ message: string; warning?: string | null }>("POST", b);
+
+export type Revealed = { accountId: string; apiKey: string; secret: string };
+export const revealCredential = (advertiserId: number, platform: string) => call<Revealed>("POST", { action: "reveal", advertiserId, platform });

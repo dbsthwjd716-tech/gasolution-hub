@@ -2,8 +2,8 @@ import Link from "next/link";
 import { getMe } from "@/lib/supabase/server";
 import { fetchAccounts } from "@/lib/legacy-accounts";
 import { fetchCredentials } from "@/lib/legacy-credentials";
-import { addAccount, editAccount, saveApi, uploadTransferred } from "../accounts-actions";
-import { AddAccountForm, ApiForm, EditAccountForm, UploadForm } from "../accounts-forms";
+import { addAccount, editAccount, revealApi, saveApi, uploadTransferred } from "../accounts-actions";
+import { AddAccountForm, ApiForm, EditAccountForm, RevealApi, UploadForm } from "../accounts-forms";
 
 const SOURCE: Record<string, { label: string; chip: string }> = {
   auto: { label: "자동", chip: "chip-muted" },
@@ -16,9 +16,14 @@ const kst = (ts: string | null) =>
 // 광고주 등록 · 피이관: 예전 대시보드 '계정 관리'와 '피이관 실적 업로드'를 옮김 (저장은 예전 대시보드 표 → 아침 수집 그대로)
 export default async function Accounts(props: PageProps<"/ads/accounts">) {
   const sp = await props.searchParams;
-  const { me } = await getMe();
+  const { me, supabase } = await getMe();
   if (!me || me.role === "staff") return <p className="glass p-5 text-sm">광고주 등록·피이관 업로드는 대표·팀장만 할 수 있습니다.</p>;
-  const [{ data, error }, creds] = await Promise.all([fetchAccounts(), fetchCredentials()]);
+  const canReveal = me.role === "ceo" || me.role === "lead";
+  const [{ data, error }, creds, { data: views }] = await Promise.all([
+    fetchAccounts(),
+    fetchCredentials(),
+    supabase.from("api_reveal_log").select("id,advertiser_name,platform,viewed_at,staff:staff_id(name)").order("viewed_at", { ascending: false }).limit(30),
+  ]);
   if (!data) return <p className="glass p-5 text-sm text-danger">{error}</p>;
   const credBy = new Map((creds.data?.advertisers ?? []).map((c) => [c.id, c]));
   const apiCount = (creds.data?.advertisers ?? []).filter((c) => c.naver || c.meta).length;
@@ -115,8 +120,8 @@ export default async function Accounts(props: PageProps<"/ads/accounts">) {
                 </summary>
                 <div className="mt-2 space-y-2">
                   <EditAccountForm action={editAccount.bind(null, a.id)} groups={data.groups} source={a.adcost_source} transferredAt={a.transferred_at} groupId={a.group_id} />
-                  {a.customer_id && <ApiForm action={saveApi.bind(null, a.id, "naver_searchad")} platform="naver_searchad" info={credBy.get(a.id)?.naver ?? null} accountId={a.customer_id} />}
-                  {a.meta_account && <ApiForm action={saveApi.bind(null, a.id, "meta")} platform="meta" info={credBy.get(a.id)?.meta ?? null} accountId={a.meta_account} />}
+                  {a.customer_id && <ApiForm action={saveApi.bind(null, a.id, "naver_searchad")} platform="naver_searchad" info={credBy.get(a.id)?.naver ?? null} accountId={a.customer_id} revealSlot={canReveal ? <RevealApi reveal={revealApi.bind(null, a.id, a.name, "naver_searchad")} platform="naver_searchad" /> : null} />}
+                  {a.meta_account && <ApiForm action={saveApi.bind(null, a.id, "meta")} platform="meta" info={credBy.get(a.id)?.meta ?? null} accountId={a.meta_account} revealSlot={canReveal ? <RevealApi reveal={revealApi.bind(null, a.id, a.name, "meta")} platform="meta" /> : null} />}
                 </div>
               </details>
             </li>
@@ -125,6 +130,21 @@ export default async function Accounts(props: PageProps<"/ads/accounts">) {
         </ul>
         {list.length > 200 && <p className="mt-2 text-xs text-ink-soft">처음 200곳만 보입니다. 검색으로 좁혀 주세요.</p>}
       </section>
+
+      <details className="glass p-5 text-sm">
+        <summary className="cursor-pointer font-bold">API 값 열람 기록 <span className="text-xs font-normal text-ink-soft">최근 30건 · 대표·팀장만 보임</span></summary>
+        <ul className="mt-2 divide-y divide-[#edf1f7] text-xs">
+          {(views ?? []).map((v) => (
+            <li key={v.id} className="flex flex-wrap gap-2 py-1.5">
+              <span className="w-28 text-ink-soft">{kst(v.viewed_at)}</span>
+              <b>{(v.staff as unknown as { name: string } | null)?.name ?? "-"}</b>
+              <span>{v.advertiser_name ?? "-"}</span>
+              <span className="text-ink-soft">{v.platform === "meta" ? "Meta 토큰" : "네이버 API"}</span>
+            </li>
+          ))}
+          {!views?.length && <li className="py-2 text-ink-soft">아직 열람 기록이 없습니다.</li>}
+        </ul>
+      </details>
     </div>
   );
 }

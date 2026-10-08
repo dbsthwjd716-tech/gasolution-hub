@@ -112,3 +112,15 @@ export async function saveApi(advertiserId: number, platform: "naver_searchad" |
   revalidatePath("/ads/accounts");
   return { error: "", ok: [data?.message, data?.warning].filter(Boolean).join(" · ") || "저장했습니다." };
 }
+
+// API 값 보기: 대표·팀장만, 열람 기록을 먼저 남겨야 값을 받아 옴 (기록이 안 되면 보여 주지 않음)
+export async function revealApi(advertiserId: number, advertiserName: string, platform: "naver_searchad" | "meta"): Promise<{ error?: string; accountId?: string; apiKey?: string; secret?: string }> {
+  const { supabase, me } = await getMe();
+  if (!me || (me.role !== "ceo" && me.role !== "lead")) return { error: "API 값은 대표·팀장만 볼 수 있습니다." };
+  const { error: logError } = await supabase.from("api_reveal_log").insert({ advertiser_id: advertiserId, advertiser_name: advertiserName, platform });
+  if (logError) return { error: `열람 기록을 남기지 못해 보여 드릴 수 없습니다: ${logError.message}` };
+  const { revealCredential } = await import("@/lib/legacy-credentials");
+  const { data, error } = await revealCredential(advertiserId, platform);
+  if (error || !data) return { error: error ?? "값을 가져오지 못했습니다." };
+  return { accountId: data.accountId, apiKey: data.apiKey, secret: data.secret };
+}

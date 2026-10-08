@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, type ReactNode } from "react";
 import type { AccForm } from "./accounts-actions";
 
 type Action = (p: AccForm, f: FormData) => Promise<AccForm>;
@@ -117,19 +117,20 @@ export function EditAccountForm({ action, groups, source, transferredAt, groupId
 }
 
 // 광고주 API 연동: 네이버 검색광고(라이선스·비밀키) 또는 Meta(토큰). 비밀값은 다시 보이지 않고 끝 4자리만
-export function ApiForm({ action, platform, info, accountId }: { action: Action; platform: "naver_searchad" | "meta"; info: { status: string; keyHint: string; statusMessage: string; lastVerifiedAt: string | null } | null; accountId: string }) {
+export function ApiForm({ action, platform, info, accountId, revealSlot }: { action: Action; platform: "naver_searchad" | "meta"; info: { status: string; keyHint: string; statusMessage: string; lastVerifiedAt: string | null } | null; accountId: string; revealSlot?: ReactNode }) {
   const [state, formAction, pending] = useActionState(action, { error: "" });
   const naver = platform === "naver_searchad";
   const tone = !info ? "chip-muted" : info.status === "invalid" ? "chip-danger" : info.status === "valid" ? "chip-ok" : "chip-warn";
   const label = !info ? "등록 안 됨 · 공용 키 사용" : info.status === "invalid" ? "확인 필요" : info.status === "valid" ? "정상" : "확인 전";
   return (
     <form action={formAction} className="space-y-2 rounded-lg border border-[#e4eaf2] p-3">
-      <p className="flex flex-wrap items-center gap-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
         <b>{naver ? "네이버 검색광고 API" : "Meta API 토큰"}</b>
         <span className={`chip ${tone}`}>{label}</span>
         {info?.keyHint && <span className="text-ink-soft">끝자리 …{info.keyHint}</span>}
         {info?.statusMessage && <span className="text-ink-soft">{info.statusMessage}</span>}
-      </p>
+        {info && revealSlot}
+      </div>
       <input type="hidden" name="account_id" value={accountId} />
       <div className="grid gap-2 sm:grid-cols-2">
         {naver ? (
@@ -149,5 +150,46 @@ export function ApiForm({ action, platform, info, accountId }: { action: Action;
         {state.ok && <span className="text-xs text-[var(--ok-ink)]">{state.ok}</span>}
       </div>
     </form>
+  );
+}
+
+// 대표·팀장: 저장된 API 값 보기 (누를 때마다 열람 기록, 1분 뒤 자동으로 가림)
+export function RevealApi({ reveal, platform }: { reveal: () => Promise<{ error?: string; accountId?: string; apiKey?: string; secret?: string }>; platform: "naver_searchad" | "meta" }) {
+  const [v, setV] = useState<{ error?: string; accountId?: string; apiKey?: string; secret?: string } | null>(null);
+  const [pending, setPending] = useState(false);
+  const [copied, setCopied] = useState("");
+  const open = async () => {
+    setPending(true);
+    const r = await reveal();
+    setPending(false);
+    setV(r);
+    if (!r.error) setTimeout(() => setV(null), 60_000);
+  };
+  const copy = (k: string, t: string) => navigator.clipboard.writeText(t).then(() => { setCopied(k); setTimeout(() => setCopied(""), 1200); });
+  if (!v || v.error) {
+    return (
+      <span className="inline-flex items-center gap-2">
+        <button type="button" onClick={open} disabled={pending} className="text-xs font-semibold text-brand underline">{pending ? "가져오는 중…" : "값 보기"}</button>
+        {v?.error && <span className="text-xs text-danger">{v.error}</span>}
+      </span>
+    );
+  }
+  const rows: [string, string][] = platform === "naver_searchad"
+    ? [["고객 ID", v.accountId ?? ""], ["API 라이선스", v.apiKey ?? ""], ["비밀키", v.secret ?? ""]]
+    : [["광고계정", v.accountId ?? ""], ["액세스 토큰", v.secret ?? ""]];
+  return (
+    <div className="w-full rounded-lg border border-[#f0d48a] bg-[#fffbf0] p-2 text-xs">
+      {rows.map(([k, t]) => (
+        <p key={k} className="flex items-center gap-2 py-0.5">
+          <span className="w-20 shrink-0 text-ink-soft">{k}</span>
+          <code className="min-w-0 flex-1 break-all font-mono">{t || "-"}</code>
+          {t && <button type="button" onClick={() => copy(k, t)} className="shrink-0 text-brand underline">{copied === k ? "복사됨" : "복사"}</button>}
+        </p>
+      ))}
+      <p className="mt-1 flex items-center justify-between text-[11px] text-[#7a5200]">
+        <span>열람 기록이 남았습니다 · 1분 뒤 자동으로 가려집니다</span>
+        <button type="button" onClick={() => setV(null)} className="underline">지금 가리기</button>
+      </p>
+    </div>
   );
 }
