@@ -164,9 +164,9 @@ export default async function Bizmoney(props: PageProps<"/ads">) {
           {shown.length}곳 · {SORT_LABEL[sortKey]} {sortDir === "desc" ? "높은" : "낮은"} 순 · 항목명(▲▼)을 누르면 오름차순/내림차순이 바뀝니다.
         </p>
         <div className="-mx-4 overflow-x-auto">
-          <table className="w-full min-w-[1180px] text-sm tabular-nums">
+          <table className="w-full min-w-[1240px] text-sm tabular-nums">
             <thead>
-              <tr className="border-y border-[#edf1f7] bg-[#f8fafd] text-left text-xs text-ink-soft">
+              <tr className="border-y border-[#edf1f7] bg-[#f8fafd] text-left text-xs text-ink-soft [&>th]:whitespace-nowrap">
                 <th className="px-4 py-2.5 font-medium">광고주명</th>
                 {manager && <th className="px-3 font-medium">담당자</th>}
                 <th className="px-3 font-medium">Customer ID</th>
@@ -181,8 +181,8 @@ export default async function Bizmoney(props: PageProps<"/ads">) {
             </thead>
             <tbody className="divide-y divide-[#edf1f7]">
               {shown.map((r: BizRow) => (
-                <tr key={r.customer_id} className={r.status === "danger" ? "bg-[#fff6f7]" : r.status === "warning" ? "bg-[#fffbf0]" : "hover:bg-[#fafbfe]"}>
-                  <td className="px-4 py-3">
+                <tr key={r.customer_id} className={"[&>td]:whitespace-nowrap " + (r.status === "danger" ? "bg-[#fff6f7]" : r.status === "warning" ? "bg-[#fffbf0]" : "hover:bg-[#fafbfe]")}>
+                  <td className="min-w-[240px] !whitespace-normal px-4 py-3">
                     <p className="font-medium">{r.advertiser_name}</p>
                     {(r.client_group || r.key_source === "advertiser" || r.source === "transferred") && (
                       <p className="text-[11.5px] text-ink-soft">
@@ -198,7 +198,7 @@ export default async function Bizmoney(props: PageProps<"/ads">) {
                   <td className="px-3 text-right">{won(netDaily(r))}원</td>
                   <td className="px-3 text-right">{r.expected_days == null ? "-" : `${Number(r.expected_days).toFixed(1)}일`}</td>
                   <td className="pl-8 pr-3 text-center"><span className={`chip ${STATUS_LABEL[r.status].chip}`}>{STATUS_LABEL[r.status].label}</span></td>
-                  <td className="max-w-[300px] px-4 text-xs text-ink-soft">{r.reason}{r.error ? ` · ${String(r.error).slice(0, 60)}` : ""}</td>
+                  <td className="min-w-[220px] max-w-[320px] !whitespace-normal px-4 text-xs text-ink-soft">{r.reason}{r.error ? ` · ${String(r.error).slice(0, 60)}` : ""}</td>
                 </tr>
               ))}
               {!shown.length && <tr><td colSpan={10} className="py-8 text-center text-ink-soft">조건에 맞는 광고주가 없습니다.</td></tr>}
