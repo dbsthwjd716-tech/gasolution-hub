@@ -1,8 +1,7 @@
 "use server";
 
-import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { getMe, supabaseEnv } from "@/lib/supabase/server";
+import { getMe } from "@/lib/supabase/server";
 
 export type FormState = { error: string; ok?: string; password?: string };
 
@@ -52,29 +51,21 @@ export async function saveJoinDate(id: string, _p: FormState, f: FormData): Prom
   return { error: "", ok: "저장" };
 }
 
-// 로그인 계정 만들기: 임시 비밀번호로 만들고 화면에 한 번만 보여 줌 → 직원이 첫 로그인 후 「비밀번호 변경」
-//   Vercel 환경변수 SUPABASE_SERVICE_ROLE_KEY 가 있어야 함 (같은 이메일의 직원에 자동 연결)
+// 로그인 계정 만들기 / 비밀번호 초기화: 데이터베이스에서 바로 만들고 임시 비밀번호를 한 번만 보여 줌
+//   대표는 누구나, 팀장은 일반 직원만 (데이터베이스 규칙). 직원은 첫 로그인 후 「비밀번호」에서 바꿈
 export async function createLogin(id: string, _p: FormState, _f: FormData): Promise<FormState> {
   const { supabase } = await manager();
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!key) return { error: "로그인 계정을 만들 설정이 아직 없습니다 (Vercel 환경변수 SUPABASE_SERVICE_ROLE_KEY)." };
-  const { data: st } = await supabase.from("staff").select("name,email,auth_user_id,is_active").eq("id", id).maybeSingle();
-  if (!st || !st.is_active) return { error: "재직 중인 직원만 만들 수 있습니다." };
-  if (st.auth_user_id) return { error: "이미 로그인 계정이 있습니다." };
-  if (!isEmail(st.email ?? "")) return { error: "이메일을 먼저 등록해 주세요." };
-  const password = `Ga${randomBytes(6).toString("base64url")}!`;
-  const { url } = supabaseEnv();
-  const res = await fetch(`${url}/auth/v1/admin/users`, {
-    method: "POST",
-    headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ email: st.email, password, email_confirm: true }),
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { msg?: string; message?: string };
-    const m = body.msg ?? body.message ?? `HTTP ${res.status}`;
-    return { error: m.includes("already") ? "이 이메일로 이미 로그인 계정이 있습니다. 대표에게 확인해 주세요." : `만들지 못했습니다: ${m}` };
-  }
+  const { data: st } = await supabase.from("staff").select("name,email").eq("id", id).maybeSingle();
+  const { data, error } = await supabase.rpc("staff_create_login", { p_staff: id });
+  if (error) return { error: error.message };
   revalidatePath("/staff");
-  return { error: "", ok: `${st.name}님 로그인 계정을 만들었습니다. 아이디 ${st.email}`, password };
+  return { error: "", ok: `${st?.name ?? ""}님 로그인 계정을 만들었습니다. 아이디 ${st?.email ?? ""}`, password: String(data) };
+}
+
+export async function resetPassword(id: string, _p: FormState, _f: FormData): Promise<FormState> {
+  const { supabase } = await manager();
+  const { data: st } = await supabase.from("staff").select("name,email").eq("id", id).maybeSingle();
+  const { data, error } = await supabase.rpc("staff_reset_password", { p_staff: id });
+  if (error) return { error: error.message };
+  return { error: "", ok: `${st?.name ?? ""}님 비밀번호를 초기화했습니다. 아이디 ${st?.email ?? ""}`, password: String(data) };
 }

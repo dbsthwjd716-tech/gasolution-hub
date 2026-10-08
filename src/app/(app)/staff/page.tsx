@@ -1,6 +1,6 @@
 import { getMe, ROLE_LABEL, type Staff } from "@/lib/supabase/server";
 import { ConfirmSubmit } from "../billing/panel";
-import { addStaff, createLogin, saveJoinDate, setActive } from "./actions";
+import { addStaff, createLogin, resetPassword, saveJoinDate, setActive } from "./actions";
 import { AddStaffForm, CreateLoginButton, JoinDateForm } from "./forms";
 
 type Row = Staff & { is_active: boolean; auth_user_id: string | null; staff_hr: { join_date: string | null } | { join_date: string | null }[] | null };
@@ -14,9 +14,7 @@ export default async function StaffPage() {
   const join = (r: Row) => (Array.isArray(r.staff_hr) ? r.staff_hr[0]?.join_date : r.staff_hr?.join_date) ?? null;
   const active = rows.filter((r) => r.is_active);
   const left = rows.filter((r) => !r.is_active);
-  const ready = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
   const canTouch = (r: Row) => me.role === "ceo" || r.role === "staff";
-  const noLogin = active.filter((r) => !r.auth_user_id).length;
 
   return (
     <div className="space-y-4">
@@ -24,13 +22,6 @@ export default async function StaffPage() {
         <h1 className="text-2xl font-bold">직원 관리</h1>
         <p className="text-sm text-ink-soft">직원 추가 · 로그인 계정 · 퇴사 처리. 역할 변경과 공급가 보기 권한은 대표만 바꿀 수 있습니다.</p>
       </header>
-
-      {!ready && noLogin > 0 && (
-        <section className="glass border-[#f0d48a] bg-[#fffbf0] p-4 text-sm">
-          <p className="font-bold text-[#7a5200]">로그인 계정이 없는 직원 {noLogin}명</p>
-          <p className="mt-1 text-ink-soft">여기서 바로 계정을 만들려면 Supabase의 서비스 키를 Vercel 환경변수 <b>SUPABASE_SERVICE_ROLE_KEY</b>로 한 번 넣어 주세요. 그 전에는 대표가 Supabase에서 직원 이메일로 사용자를 만들면 자동으로 연결됩니다.</p>
-        </section>
-      )}
 
       <section className="glass p-4">
         <h2 className="mb-3 text-sm font-bold">직원 등록</h2>
@@ -54,7 +45,14 @@ export default async function StaffPage() {
                   <td className="px-3">{ROLE_LABEL[r.role]}</td>
                   <td className="px-3 text-xs">{r.email || <span className="text-danger">없음</span>}</td>
                   <td className="px-3">{canTouch(r) ? <JoinDateForm action={saveJoinDate.bind(null, r.id)} value={join(r)} /> : <span className="text-xs">{join(r) ?? "-"}</span>}</td>
-                  <td className="px-3">{r.auth_user_id ? <span className="chip chip-ok">있음</span> : <CreateLoginButton action={createLogin.bind(null, r.id)} ready={ready} />}</td>
+                  <td className="px-3">
+                    {r.auth_user_id ? (
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span className="chip chip-ok">있음</span>
+                        {canTouch(r) && r.id !== me.id && <CreateLoginButton action={resetPassword.bind(null, r.id)} label="비밀번호 초기화" confirmText={`${r.name}님 비밀번호를 새 임시 비밀번호로 바꿀까요?`} />}
+                      </span>
+                    ) : canTouch(r) ? <CreateLoginButton action={createLogin.bind(null, r.id)} /> : <span className="text-xs text-ink-soft">대표만 만들 수 있음</span>}
+                  </td>
                   <td className="px-4 text-right">
                     {canTouch(r) && r.id !== me.id && <ConfirmSubmit action={setActive.bind(null, r.id, false)} label="퇴사 처리" confirmText={`${r.name}님을 퇴사 처리할까요? 로그인이 막히고 담당 기록은 그대로 남습니다.`} />}
                   </td>

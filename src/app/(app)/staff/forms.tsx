@@ -45,7 +45,7 @@ export function JoinDateForm({ action, value }: { action: Action; value: string 
 }
 
 // 임시 비밀번호는 이 화면에서 한 번만 보여 줌 (저장하지 않음)
-export function CreateLoginButton({ action, ready }: { action: Action; ready: boolean }) {
+export function CreateLoginButton({ action, label = "로그인 계정 만들기", confirmText }: { action: Action; label?: string; confirmText?: string }) {
   const [state, formAction, pending] = useActionState(action, { error: "" });
   const [copied, setCopied] = useState(false);
   if (state.password) {
@@ -55,13 +55,13 @@ export function CreateLoginButton({ action, ready }: { action: Action; ready: bo
         <p className="mt-1">임시 비밀번호 <b className="font-mono text-sm">{state.password}</b>
           <button type="button" className="ml-2 text-brand underline" onClick={() => navigator.clipboard.writeText(state.password!).then(() => setCopied(true))}>{copied ? "복사됨" : "복사"}</button>
         </p>
-        <p className="mt-1 text-ink-soft">지금만 보입니다. 직원에게 직접 전달하고, 첫 로그인 뒤 「비밀번호 변경」에서 바꾸도록 안내해 주세요.</p>
+        <p className="mt-1 text-ink-soft">지금만 보입니다. 직원에게 직접 전달하고, 첫 로그인 뒤 메뉴 아래 「비밀번호」에서 바꾸도록 안내해 주세요.</p>
       </div>
     );
   }
   return (
-    <form action={formAction} className="inline">
-      <button className="text-xs font-semibold text-brand hover:underline disabled:text-ink-soft" disabled={pending || !ready} title={ready ? "" : "설정이 필요합니다"}>{pending ? "만드는 중…" : "로그인 계정 만들기"}</button>
+    <form action={formAction} className="inline" onSubmit={(e) => { if (confirmText && !window.confirm(confirmText)) e.preventDefault(); }}>
+      <button className="text-xs font-semibold text-brand hover:underline disabled:text-ink-soft" disabled={pending}>{pending ? "처리 중…" : label}</button>
       {state.error && <span className="ml-2 text-[11px] text-danger">{state.error}</span>}
     </form>
   );
