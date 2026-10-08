@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import JSZip from "jszip";
-import { fillContractTemplate, type ContractVars } from "./contract-docx.ts";
+import { fillContractTemplate, normalizeCompanyNames, normalizeCompanyText, type ContractVars } from "./contract-docx.ts";
 
 const base: ContractVars = {
   contractDate: "2026-10-07", clientName: "용접공구 & 상사", clientRepresentative: "이병석", clientBusinessNumber: "122-01-55229",
@@ -27,4 +27,16 @@ test("끝나는 날이 없으면 '~부터'로 정리, 자동 연장 문구", asy
   assert.match(out, /1개월씩 자동 연장된다/);
   const withEnd = await read(await fillContractTemplate(await make("<w:t>{{CONTRACT_PERIOD}}</w:t>"), { ...base, end: "2027-09-30", autoRenew: false }));
   assert.equal(withEnd, "<w:t>2026-10-01부터 2027-09-30까지</w:t>");
+});
+
+test("회사 표기: 주식회사·㈜는 모두 (주)로, 겹친 표기는 하나로", async () => {
+  assert.equal(normalizeCompanyText("(주)도우정보 및 주식회사 ㈜지에이솔루션"), "(주)도우정보 및 (주)지에이솔루션");
+  assert.equal(normalizeCompanyText("주식회사 도우정보와 ㈜에이비씨"), "(주)도우정보와 (주)에이비씨");
+  // Word가 글자를 여러 조각으로 나눠 저장한 경우
+  const xml = '<w:p><w:r><w:t>및 주식</w:t></w:r><w:r><w:t xml:space="preserve">회사 </w:t></w:r><w:r><w:t>㈜지에이솔루션(이하</w:t></w:r></w:p>';
+  const out = normalizeCompanyNames(xml);
+  assert.equal(out.replace(/<[^>]+>/g, ""), "및 (주)지에이솔루션(이하");
+  // 이름이 "주식회사 …"인 거래처도 (주)로
+  const doc = await read(await fillContractTemplate(await make("<w:p><w:r><w:t>{{CLIENT_NAME}} 및 주식회사 ㈜지에이솔루션</w:t></w:r></w:p>"), { ...base, clientName: "주식회사 도우정보" }));
+  assert.equal(doc.replace(/<[^>]+>/g, ""), "(주)도우정보 및 (주)지에이솔루션");
 });

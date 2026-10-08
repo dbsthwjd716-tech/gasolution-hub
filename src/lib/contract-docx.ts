@@ -39,6 +39,62 @@ export function contractReplacements(v: ContractVars): Record<string, string> {
   };
 }
 
+// 회사 이름 표기 통일: "주식회사 ㈜지에이솔루션"처럼 겹친 표기와 모든 "주식회사"·"㈜"를 "(주)"로
+// Word는 한 문장을 여러 조각(<w:t>)으로 나눠 저장하므로, 문단 안의 글자를 이어 붙여 찾은 뒤 조각별로 고쳐 넣음
+const COMPANY_RULES: [RegExp, string][] = [
+  [/주식회사\s*(?:㈜|\(주\))\s*/g, "(주)"],
+  [/(?:㈜|\(주\))\s*주식회사\s*/g, "(주)"],
+  [/주식회사\s*/g, "(주)"],
+  [/㈜/g, "(주)"],
+];
+
+const unescXml = (v: string) => v.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+
+export function normalizeCompanyText(text: string): string {
+  let t = text;
+  for (const [re, to] of COMPANY_RULES) t = t.replace(re, to);
+  return t;
+}
+
+// 문단마다 <w:t> 조각을 이어 붙여 규칙을 적용하고, 바뀐 글자를 원래 조각 경계에 맞춰 다시 나눠 넣음
+export function normalizeCompanyNames(xml: string): string {
+  return xml.replace(/<w:p[ >][\s\S]*?<\/w:p>/g, (para) => {
+    const parts: { full: string; open: string; text: string }[] = [];
+    const re = /(<w:t(?:\s[^>]*)?>)([\s\S]*?)<\/w:t>/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(para))) parts.push({ full: m[0], open: m[1], text: unescXml(m[2]) });
+    if (!parts.length) return para;
+    const joined = parts.map((x) => x.text).join("");
+    if (!/주식회사|㈜/.test(joined)) return para;
+    // 글자 하나하나가 어느 조각에서 왔는지 기억하며 규칙 적용
+    const owner: number[] = [];
+    parts.forEach((x, i) => { for (let k = 0; k < x.text.length; k++) owner.push(i); });
+    let chars = joined.split("").map((c, k) => ({ c, o: owner[k] }));
+    for (const [rule, to] of COMPANY_RULES) {
+      const text = chars.map((x) => x.c).join("");
+      const out: typeof chars = [];
+      let last = 0;
+      for (const mm of text.matchAll(new RegExp(rule.source, "g"))) {
+        const at = mm.index ?? 0;
+        out.push(...chars.slice(last, at));
+        const o = chars[at].o; // 바뀐 글자는 찾은 부분이 시작된 조각에 넣음
+        for (const c of to) out.push({ c, o });
+        last = at + mm[0].length;
+      }
+      out.push(...chars.slice(last));
+      chars = out;
+    }
+    const texts = parts.map(() => "");
+    for (const x of chars) texts[x.o] += x.c;
+    let i = 0;
+    return para.replace(re, (_all, open: string) => {
+      const t = texts[i++];
+      const o = /xml:space=/.test(open) ? open : open.replace("<w:t", '<w:t xml:space="preserve"');
+      return `${o}${escXml(t)}</w:t>`;
+    });
+  });
+}
+
 // 양식 안의 글자를 바꾼 새 Word 파일. 끝나는 날이 없으면 "~부터 까지로 정한다" 같은 문장을 정리
 export async function fillContractTemplate(template: ArrayBuffer | Uint8Array, v: ContractVars): Promise<Uint8Array> {
   const zip = await JSZip.loadAsync(template);
@@ -50,6 +106,7 @@ export async function fillContractTemplate(template: ArrayBuffer | Uint8Array, v
     // 예전 양식에 남아 있던 견본 업체명
     xml = xml.split("앰엔에이치").join(escXml(v.clientName));
     if (!v.end) xml = xml.replace(/부터\s*까지로 정한다\./g, "부터로 정한다.").replace(/부터\s*까지/g, "부터");
+    xml = normalizeCompanyNames(xml);
     zip.file(n, xml);
   }
   return zip.generateAsync({ type: "uint8array" });
