@@ -18,7 +18,66 @@ export type ClientValues = {
   status?: string;
   kinds?: string[];
   memo?: string | null;
+  fee_markup_type?: "rate" | "fixed" | "none";
+  fee_markup_rate?: number;
+  fee_markup_fixed?: number;
+  fee_min_fee?: number;
+  fee_vat_mode?: "included" | "excluded";
+  fee_note?: string | null;
 };
+
+const comma = (v: string) => {
+  const d = v.replace(/[^\d]/g, "");
+  return d ? Number(d).toLocaleString("ko-KR") : "";
+};
+
+// 기본 수수료 조건: 정산서를 쓸 때 계약이 없으면 이 값으로 자동 계산
+function FeeFields({ initial }: { initial: ClientValues }) {
+  const [type, setType] = useState(initial.fee_markup_type ?? "none");
+  const [fixed, setFixed] = useState(initial.fee_markup_fixed ? comma(String(initial.fee_markup_fixed)) : "");
+  const [minFee, setMinFee] = useState(initial.fee_min_fee ? comma(String(initial.fee_min_fee)) : "");
+  return (
+    <div className="space-y-3 rounded-xl border border-[var(--glass-border)] bg-white/60 p-4 md:col-span-2">
+      <div>
+        <p className="text-sm font-bold">계약 수수료 (기본 조건)</p>
+        <p className="text-xs text-ink-soft">정산서를 쓸 때 그 날짜에 맞는 계약이 없으면 이 조건으로 자동 계산합니다. 계약이 있으면 계약 조건이 먼저입니다.</p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <label className="text-xs text-ink-soft">방식
+          <select name="fee_markup_type" value={type} onChange={(e) => setType(e.target.value as typeof type)} className="field mt-1">
+            <option value="rate">광고비의 % (마크업)</option>
+            <option value="fixed">고정 금액 (광고비와 관계없이)</option>
+            <option value="none">없음 · 정하지 않음</option>
+          </select>
+        </label>
+        {type === "rate" && (
+          <label className="text-xs text-ink-soft">수수료율 (%)
+            <input name="fee_markup_rate" inputMode="decimal" defaultValue={initial.fee_markup_rate ? String(initial.fee_markup_rate) : ""} placeholder="예: 14.3" className="field mt-1 text-right" />
+          </label>
+        )}
+        {type === "fixed" && (
+          <label className="text-xs text-ink-soft">고정 금액 (원)
+            <input name="fee_markup_fixed" inputMode="numeric" value={fixed} onChange={(e) => setFixed(comma(e.target.value))} placeholder="예: 220,000" className="field mt-1 text-right tabular-nums" />
+          </label>
+        )}
+        {type === "rate" && (
+          <label className="text-xs text-ink-soft">최소 수수료 (원, 선택)
+            <input name="fee_min_fee" inputMode="numeric" value={minFee} onChange={(e) => setMinFee(comma(e.target.value))} placeholder="없으면 비워 두기" className="field mt-1 text-right tabular-nums" />
+          </label>
+        )}
+        {type !== "none" && (
+          <label className="text-xs text-ink-soft">광고비 VAT
+            <select name="fee_vat_mode" defaultValue={initial.fee_vat_mode ?? "included"} className="field mt-1">
+              <option value="included">광고비 VAT 포함 금액 기준</option>
+              <option value="excluded">광고비 VAT 별도 금액 기준</option>
+            </select>
+          </label>
+        )}
+      </div>
+      <input name="fee_note" defaultValue={initial.fee_note ?? ""} placeholder="조건 설명 (선택) · 예: 쿠팡 광고비와 관계없이 월 22만원" className="field" aria-label="수수료 조건 설명" />
+    </div>
+  );
+}
 
 function Message({ state }: { state: FormState }) {
   if (state.error) return <p className="text-sm text-danger" role="alert">{state.error}</p>;
@@ -116,6 +175,7 @@ export function ClientForm({
             <input id="brand_name" name="brand_name" placeholder="예: 티키타카. 상호와 같으면 그대로 적어 주세요" className="field" />
           </div>
         )}
+        <FeeFields initial={initial} />
         <div className="md:col-span-2">
           <label className="label" htmlFor="memo">메모</label>
           <textarea id="memo" name="memo" rows={3} defaultValue={initial.memo ?? ""} className="field" />

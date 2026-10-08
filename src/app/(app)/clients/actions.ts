@@ -41,8 +41,21 @@ function clientFields(f: FormData) {
   if (!bn.ok) return { error: bn.message } as const;
   const company_name = s(f, "company_name");
   if (!company_name) return { error: "상호를 입력해 주세요." } as const;
+  const feeType = s(f, "fee_markup_type") ?? "none";
+  if (!["rate", "fixed", "none"].includes(feeType)) return { error: "수수료 방식이 올바르지 않습니다." } as const;
+  const num = (k: string) => Number(String(f.get(k) ?? "").replace(/[^\d.]/g, "") || 0);
+  const rate = num("fee_markup_rate");
+  if (feeType === "rate" && !(rate > 0 && rate < 100)) return { error: "수수료율(%)을 0보다 크고 100보다 작게 입력해 주세요." } as const;
+  const fixed = Math.round(num("fee_markup_fixed"));
+  if (feeType === "fixed" && fixed <= 0) return { error: "고정 수수료 금액을 입력해 주세요." } as const;
   return {
     row: {
+      fee_markup_type: feeType,
+      fee_markup_rate: feeType === "rate" ? rate : 0,
+      fee_markup_fixed: feeType === "fixed" ? fixed : 0,
+      fee_min_fee: feeType === "rate" ? Math.round(num("fee_min_fee")) : 0,
+      fee_vat_mode: s(f, "fee_vat_mode") === "excluded" ? "excluded" : "included",
+      fee_note: s(f, "fee_note"),
       company_name,
       business_number: bn.value,
       representative_name: s(f, "representative_name"),

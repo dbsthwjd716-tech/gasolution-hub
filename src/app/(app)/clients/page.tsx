@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { formatBizNo } from "@/lib/bizno";
+import { markupText } from "@/lib/billing-calc";
 import { createClient } from "@/lib/supabase/server";
 
 type Row = {
@@ -11,6 +12,9 @@ type Row = {
   kinds: string[];
   owner: { name: string } | null;
   brands: { id: string; name: string; media_accounts: { id: string }[] }[];
+  fee_markup_type: "rate" | "fixed" | "none";
+  fee_markup_rate: number;
+  fee_markup_fixed: number;
 };
 
 const STATUS: Record<Row["status"], { label: string; cls: string }> = {
@@ -28,7 +32,7 @@ export default async function ClientsPage(props: PageProps<"/clients">) {
   let query = supabase
     .from("clients")
     .select(
-      "id,company_name,business_number,is_provisional,status,kinds,owner:staff!clients_owner_staff_id_fkey(name),brands(id,name,media_accounts(id))",
+      "id,company_name,business_number,is_provisional,status,kinds,fee_markup_type,fee_markup_rate,fee_markup_fixed,owner:staff!clients_owner_staff_id_fkey(name),brands(id,name,media_accounts(id))",
     )
     .order("company_name");
   if (filter === "provisional") query = query.eq("is_provisional", true);
@@ -95,6 +99,7 @@ export default async function ClientsPage(props: PageProps<"/clients">) {
               <th className="px-4 py-3">사업자번호</th>
               <th className="px-4 py-3">브랜드</th>
               <th className="px-4 py-3 text-right">매체 계정</th>
+              <th className="px-4 py-3">수수료</th>
               <th className="px-4 py-3">담당</th>
               <th className="px-4 py-3">상태</th>
             </tr>
@@ -113,13 +118,14 @@ export default async function ClientsPage(props: PageProps<"/clients">) {
                 <td className="px-4 py-3 text-right tabular-nums">
                   {r.brands.reduce((n, b) => n + b.media_accounts.length, 0)}
                 </td>
+                <td className="px-4 py-3 tabular-nums">{r.fee_markup_type === "none" ? <span className="text-ink-soft">-</span> : markupText(r.fee_markup_type, r.fee_markup_rate, r.fee_markup_fixed)}</td>
                 <td className="px-4 py-3">{r.owner?.name ?? "-"}</td>
                 <td className="px-4 py-3"><span className={`chip ${STATUS[r.status].cls}`}>{STATUS[r.status].label}</span></td>
               </tr>
             ))}
             {!rows.length && !error && (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-ink-soft">
+                <td colSpan={7} className="px-4 py-10 text-center text-ink-soft">
                   {q ? `'${q}'에 맞는 거래처가 없습니다.` : "아직 등록된 거래처가 없습니다."}
                 </td>
               </tr>

@@ -12,6 +12,17 @@ export type BillingClient = {
   has_registration: boolean;
   status: string;
   brands: { id: string; name: string }[];
+  fee: ClientFee;
+};
+
+// 거래처 기본 수수료 조건 (계약이 없을 때 정산서에 자동 적용)
+export type ClientFee = {
+  markup_type: "rate" | "fixed" | "none";
+  markup_rate: number;
+  markup_fixed: number;
+  min_fee: number;
+  vat_mode: "included" | "excluded";
+  note: string | null;
 };
 
 export type ContractTerms = {
@@ -54,7 +65,7 @@ export const MEDIA_LABEL: Record<string, string> = {
 export async function loadBillingClients(supabase: SupabaseClient): Promise<BillingClient[]> {
   const { data } = await supabase
     .from("clients")
-    .select("id,company_name,business_number,representative_name,address,billing_emails,status,brands(id,name),client_documents(document_type)")
+    .select("id,company_name,business_number,representative_name,address,billing_emails,status,fee_markup_type,fee_markup_rate,fee_markup_fixed,fee_min_fee,fee_vat_mode,fee_note,brands(id,name),client_documents(document_type)")
     .order("company_name");
   return (data ?? []).map((c) => ({
     id: c.id,
@@ -66,6 +77,14 @@ export async function loadBillingClients(supabase: SupabaseClient): Promise<Bill
     status: c.status,
     brands: c.brands ?? [],
     has_registration: (c.client_documents ?? []).some((d: { document_type: string }) => d.document_type === "business_registration"),
+    fee: {
+      markup_type: c.fee_markup_type ?? "none",
+      markup_rate: Number(c.fee_markup_rate ?? 0),
+      markup_fixed: Number(c.fee_markup_fixed ?? 0),
+      min_fee: Number(c.fee_min_fee ?? 0),
+      vat_mode: c.fee_vat_mode ?? "included",
+      note: c.fee_note ?? null,
+    },
   }));
 }
 

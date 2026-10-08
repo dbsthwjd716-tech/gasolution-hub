@@ -19,6 +19,7 @@ export type FormClient = {
   address: string | null;
   billing_emails: string[];
   has_registration: boolean;
+  fee?: { markup_type: MarkupType; markup_rate: number; markup_fixed: number; min_fee: number; vat_mode: VatMode; note: string | null };
 };
 export type FormContract = {
   id: string;
@@ -140,6 +141,17 @@ export function BillingForm({
     const k = pickContract(contracts, cid, date);
     if (!k) {
       setContractId("");
+      // 계약이 없으면 거래처에 정해 둔 기본 수수료 조건
+      const fee = clients.find((c) => c.id === cid)?.fee;
+      if (fee && fee.markup_type !== "none") {
+        setMarkupType(fee.markup_type);
+        setRate(fee.markup_rate ? String(fee.markup_rate) : "");
+        setFixed(fmt(fee.markup_fixed));
+        setMinFee(fmt(fee.min_fee));
+        setVatMode(fee.vat_mode);
+        setApplied("client");
+        return;
+      }
       setApplied(cid ? "none" : "");
       return;
     }
@@ -219,10 +231,13 @@ export function BillingForm({
           <div className="grid gap-4 md:grid-cols-2">
             <input type="hidden" name="contract_id" value={contractId} />
             <div className="md:col-span-2">
-              {applied && applied !== "none" && appliedContract && (
+              {applied && applied !== "none" && applied !== "client" && appliedContract && (
                 <p className="chip chip-ok">계약 조건 자동 적용: {markupText(appliedContract.markup_type, appliedContract.markup_rate, appliedContract.markup_fixed)} · VAT {appliedContract.vat_mode === "included" ? "포함" : "별도"}{appliedContract.min_fee ? ` · 최소 ${won(appliedContract.min_fee)}` : ""}</p>
               )}
-              {applied === "none" && <p className="chip chip-warn">완료된 계약이 없습니다. 조건을 직접 입력해 주세요.</p>}
+              {applied === "client" && client?.fee && (
+                <p className="chip chip-ok">거래처 기본 수수료 적용: {markupText(client.fee.markup_type, client.fee.markup_rate, client.fee.markup_fixed)} · VAT {client.fee.vat_mode === "included" ? "포함" : "별도"}{client.fee.min_fee ? ` · 최소 ${won(client.fee.min_fee)}` : ""}{client.fee.note ? ` · ${client.fee.note}` : ""}</p>
+              )}
+              {applied === "none" && <p className="chip chip-warn">완료된 계약도, 거래처 기본 수수료도 없습니다. 조건을 직접 입력해 주세요.</p>}
               {!applied && contractId && appliedContract && <p className="chip chip-info">연결된 계약: {markupText(appliedContract.markup_type, appliedContract.markup_rate, appliedContract.markup_fixed)}</p>}
             </div>
             <div>
