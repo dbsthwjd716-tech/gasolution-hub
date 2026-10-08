@@ -82,6 +82,7 @@ export default async function Promotions() {
     <div className="space-y-4">
       <header>
         <h1 className="text-2xl font-bold">주간 일소진 상승 프로모션</h1>
+        <p className="text-xs text-ink-soft"><Link href="/promotions/monthly" className="text-brand underline">월간 목표 프로모션</Link>은 따로 있습니다.</p>
         <p className="text-sm text-ink-soft">
           평가 주(월~일)의 일평균 광고비가 직전 주 일평균 + 상승 목표 이상이면 달성 · 개인과 팀은 따로 판정 · 네이버 유상실적(VAT 별도, 급여 실적과 같은 기준) + 대상에 따라 메타 · 바이럴 제외
         </p>

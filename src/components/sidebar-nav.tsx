@@ -38,7 +38,14 @@ export const GROUPS: Group[] = [
       { href: "/billing", label: "정산서 · 견적서", icon: "receipt" },
     ],
   },
-  { key: "promo", label: "프로모션", items: [{ href: "/promotions", label: "주간 일소진 프로모션", icon: "gift" }] },
+  {
+    key: "promo",
+    label: "프로모션",
+    items: [
+      { href: "/promotions", label: "주간 일소진 프로모션", icon: "gift" },
+      { href: "/promotions/monthly", label: "월간 목표 프로모션", icon: "chart" },
+    ],
+  },
   {
     key: "attend",
     label: "근태 · 연차",
