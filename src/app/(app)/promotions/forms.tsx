@@ -39,6 +39,7 @@ export type EditTarget = { staff_id: string; name: string; increment: number; sc
 export type EditWeek = {
   id: string; title: string | null; base_start: string; base_end: string; week_start: string; week_end: string;
   team_increment: number; reward_personal: string; reward_team: string; memo: string | null;
+  reward_personal_hours: number; reward_team_hours: number;
 };
 
 export function WeekForm({ action, week, targets, individualSum }: { action: Action; week: EditWeek; targets: EditTarget[]; individualSum: number }) {
@@ -87,11 +88,17 @@ export function WeekForm({ action, week, targets, individualSum }: { action: Act
           </tr>
         </tbody>
       </table>
-      <div className="grid gap-2 sm:grid-cols-2">
-        <label className="text-xs text-ink-soft">개인 달성 혜택
+      <div className="grid gap-2 sm:grid-cols-4">
+        <label className="text-xs text-ink-soft">개인 달성 조기퇴근 (시간)
+          <input name="reward_personal_hours" inputMode="decimal" defaultValue={week.reward_personal_hours} className="field mt-1 text-right" />
+        </label>
+        <label className="text-xs text-ink-soft">팀 달성 금요일 조기퇴근 (시간)
+          <input name="reward_team_hours" inputMode="decimal" defaultValue={week.reward_team_hours} className="field mt-1 text-right" />
+        </label>
+        <label className="text-xs text-ink-soft">개인 달성 혜택 설명
           <input name="reward_personal" defaultValue={week.reward_personal} className="field mt-1" />
         </label>
-        <label className="text-xs text-ink-soft">팀 달성 혜택
+        <label className="text-xs text-ink-soft">팀 달성 혜택 설명
           <input name="reward_team" defaultValue={week.reward_team} className="field mt-1" />
         </label>
       </div>
@@ -121,7 +128,7 @@ export function AddTargetForm({ action, staff }: { action: Action; staff: { id: 
   );
 }
 
-export function CopyNotice({ text }: { text: string }) {
+export function CopyNotice({ text, label }: { text: string; label: string }) {
   const [done, setDone] = useState(false);
   return (
     <button
@@ -137,7 +144,7 @@ export function CopyNotice({ text }: { text: string }) {
         }
       }}
     >
-      {done ? "복사했습니다" : "공지 문구 복사"}
+      {done ? "복사했습니다" : label}
     </button>
   );
 }

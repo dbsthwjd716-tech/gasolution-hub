@@ -41,13 +41,13 @@ export async function createWeek(_p: FormState, f: FormData): Promise<FormState>
     if (!isDate(day)) return { error: "평가할 주의 날짜를 골라 주세요." };
     const week = weekOf(mondayOf(day));
     const base = previousWeek(week);
-    const { data: last } = await supabase.from("promo_weeks").select("id,team_increment,reward_personal,reward_team").lt("week_start", week.start).order("week_start", { ascending: false }).limit(1).maybeSingle();
+    const { data: last } = await supabase.from("promo_weeks").select("id,team_increment,reward_personal,reward_team,reward_personal_hours,reward_team_hours").lt("week_start", week.start).order("week_start", { ascending: false }).limit(1).maybeSingle();
     const { data: w, error } = await supabase
       .from("promo_weeks")
       .insert({
         base_start: base.start, base_end: base.end, week_start: week.start, week_end: week.end,
         team_increment: last?.team_increment ?? 0,
-        ...(last ? { reward_personal: last.reward_personal, reward_team: last.reward_team } : {}),
+        ...(last ? { reward_personal: last.reward_personal, reward_team: last.reward_team, reward_personal_hours: last.reward_personal_hours, reward_team_hours: last.reward_team_hours } : {}),
       })
       .select("id")
       .single();
@@ -71,6 +71,8 @@ export async function saveWeek(id: string, _p: FormState, f: FormData): Promise<
       team_increment: money(f, "team_increment"),
       reward_personal: s(f, "reward_personal") ?? "",
       reward_team: s(f, "reward_team") ?? "",
+      reward_personal_hours: Number(s(f, "reward_personal_hours") ?? 1) || 0,
+      reward_team_hours: Number(s(f, "reward_team_hours") ?? 2) || 0,
       memo: s(f, "memo"),
     };
     if (![row.base_start, row.base_end, row.week_start, row.week_end].every((d) => isDate(d))) return { error: "기간을 모두 입력해 주세요." };

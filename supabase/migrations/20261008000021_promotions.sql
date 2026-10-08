@@ -12,6 +12,8 @@ create table public.promo_weeks (
   team_increment bigint not null default 0 check (team_increment >= 0),
   reward_personal text not null default '다음 주 중 1시간 조기퇴근',
   reward_team     text not null default '다음 주 금요일 2시간 조기퇴근 (17시 퇴근, 팀 전원)',
+  reward_personal_hours numeric(3,1) not null default 1 check (reward_personal_hours >= 0),
+  reward_team_hours     numeric(3,1) not null default 2 check (reward_team_hours >= 0),
   memo           text,
   closed_at      timestamptz,
   results        jsonb,
@@ -57,12 +59,12 @@ begin
            (old.base_start, old.base_end, old.week_start, old.week_end, old.team_increment) then
       raise exception '마감된 주차는 마감을 풀어야 고칠 수 있습니다';
     end if;
-    if (old.base_start, old.base_end, old.week_start, old.week_end, old.team_increment, old.reward_personal, old.reward_team, old.title) is distinct from
-       (new.base_start, new.base_end, new.week_start, new.week_end, new.team_increment, new.reward_personal, new.reward_team, new.title) then
+    if (old.base_start, old.base_end, old.week_start, old.week_end, old.team_increment, old.reward_personal, old.reward_team, old.title, old.reward_personal_hours, old.reward_team_hours) is distinct from
+       (new.base_start, new.base_end, new.week_start, new.week_end, new.team_increment, new.reward_personal, new.reward_team, new.title, new.reward_personal_hours, new.reward_team_hours) then
       insert into public.promo_history(week_id, changed_by, what, before, after)
       values (new.id, public.my_staff_id(), '주차 설정',
-        jsonb_build_object('base', old.base_start || '~' || old.base_end, 'week', old.week_start || '~' || old.week_end, 'team', old.team_increment, 'title', old.title),
-        jsonb_build_object('base', new.base_start || '~' || new.base_end, 'week', new.week_start || '~' || new.week_end, 'team', new.team_increment, 'title', new.title));
+        jsonb_build_object('base', old.base_start || '~' || old.base_end, 'week', old.week_start || '~' || old.week_end, 'team', old.team_increment, 'title', old.title, 'hours', old.reward_personal_hours || '/' || old.reward_team_hours),
+        jsonb_build_object('base', new.base_start || '~' || new.base_end, 'week', new.week_start || '~' || new.week_end, 'team', new.team_increment, 'title', new.title, 'hours', new.reward_personal_hours || '/' || new.reward_team_hours));
     end if;
   end if;
   return new;

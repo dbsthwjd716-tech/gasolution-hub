@@ -87,37 +87,57 @@ export function computePromo(data: PromoSpend, targets: PromoTarget[], base: Ran
 }
 
 const won = (v: number) => `${Math.round(v).toLocaleString("ko-KR")}원`;
-const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8))}`;
+const signed = (v: number) => `${v >= 0 ? "+" : "-"}${Math.abs(Math.round(v)).toLocaleString("ko-KR")}원`;
+const md = (d: string) => `${String(Number(d.slice(5, 7))).padStart(2, "0")}/${d.slice(8)}`;
+const hours = (h: number) => `${Number.isInteger(h) ? h : h.toFixed(1)}시간`;
 
-// 팀 공지용 문구 (팀장·대표 개인 실적은 넣지 않음 — 목표 대상만)
-export function noticeText(r: ReturnType<typeof computePromo>, base: Range, week: Range, rewardPersonal: string, rewardTeam: string) {
+// 이름 부르기: 1차 공지는 이름만(진원), 2차는 성+이름(서진원)
+export const givenName = (n: string) => (n.length >= 3 ? n.slice(1) : n);
+
+// 1차: 목표 전달 — 괄호 안은 목표 일소진액 (기준 + 상승 목표)
+export function goalNotice(r: ReturnType<typeof computePromo>, week: Range) {
   const lines = [
-    "[주간 일소진 상승 프로모션 결과]",
-    `기준 주: ${md(base.start)}~${md(base.end)}`,
-    `평가 주: ${md(week.start)}~${md(week.end)}${r.complete ? "" : ` (진행 중 · ${Math.min(...r.people.map((p) => p.days))}일치 반영)`}`,
+    "📈 [금주 조기퇴근 프로모션]",
     "",
+    "■ 목표 기간",
+    `${md(week.start)}~${md(week.end)} · 지난주 대비 금주 일평균 광고비 소진액 증액`,
+    "",
+    "■ 개인 목표",
+    "",
+    ...r.people.map((p) => `- ${givenName(p.name)} : +${p.increment.toLocaleString("ko-KR")}원 (${p.target.toLocaleString("ko-KR")}원)`),
+    "",
+    "■ 팀 목표",
+    "",
+    `- 팀 전체 : +${r.team.increment.toLocaleString("ko-KR")}원 (${r.team.target.toLocaleString("ko-KR")}원)`,
   ];
+  return lines.join("\n");
+}
+
+// 2차: 결과 전달 — 개인 달성 시 개인 시간, 팀 달성 시 팀원 전원 팀 시간, 합쳐서 최종
+export function resultNotice(
+  r: ReturnType<typeof computePromo>,
+  asOf: string,
+  personalHours: number,
+  teamHours: number,
+) {
+  const lines = [`[조기퇴근 프로모션 결과 (${md(asOf)} 기준)]`, "", "개인 목표", ""];
   for (const p of r.people) {
-    lines.push(
-      `▶ ${p.name}`,
-      `기준 일소진액: ${won(p.base)}`,
-      `상승 목표: +${won(p.increment)}`,
-      `목표 일소진액: ${won(p.target)}`,
-      `${r.complete ? "마감" : "현재"} 일소진액: ${won(p.current)}`,
-      `결과: ${p.achieved ? "달성" : "미달성"}${r.complete ? "" : " (진행 중)"}`,
-      "",
-    );
+    const n = p.name;
+    lines.push(p.achieved ? `✅  ${n} : 목표 달성 (${signed(p.gap)}) → ${hours(personalHours)} 조기퇴근` : `❌  ${n} : 목표 미달 (${signed(p.gap)})`);
   }
-  lines.push(
-    "▶ 팀",
-    `기준 일소진액: ${won(r.team.base)}`,
-    `상승 목표: +${won(r.team.increment)}`,
-    `목표 일소진액: ${won(r.team.target)}`,
-    `${r.complete ? "마감" : "현재"} 일소진액: ${won(r.team.current)}`,
-    `결과: ${r.team.achieved ? "달성" : "미달성"}${r.complete ? "" : " (진행 중)"}`,
-    "",
-    `🎁 개인 달성: ${rewardPersonal} / 팀 달성: ${rewardTeam}`,
-    "※ 네이버 유상실적(VAT 별도) 기준, 진원 인계건 제외, 바이럴 공통 제외.",
-  );
+  lines.push("", "팀 목표", "");
+  lines.push(`${r.team.achieved ? "✅" : "❌"}  목표 ${won(r.team.target)} → 실적 ${won(r.team.current)} (${signed(r.team.gap)})`);
+  if (r.team.achieved) lines.push(`→ 전원 금요일 ${hours(teamHours)} 조기퇴근`);
+  // 최종: 사람마다 받은 시간 합계, 같은 시간끼리 묶음
+  const total = new Map<number, string[]>();
+  for (const p of r.people) {
+    const h = (p.achieved ? personalHours : 0) + (r.team.achieved && p.in_team ? teamHours : 0);
+    if (h > 0) total.set(h, [...(total.get(h) ?? []), p.name]);
+  }
+  lines.push("", "최종", "");
+  if (!total.size) lines.push("이번 주는 조기퇴근 대상이 없습니다. 다음 주에 다시 도전해요! 💪");
+  for (const [h, names] of [...total.entries()].sort((a, b) => b[0] - a[0])) {
+    lines.push(`🏆 ${names.join(" / ")} : ${h > Math.max(personalHours, teamHours) ? "총 " : ""}${hours(h)} 조기퇴근`);
+  }
   return lines.join("\n");
 }

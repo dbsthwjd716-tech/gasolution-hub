@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { computePromo, mondayOf, noticeText, previousWeek, weekOf, type PromoSpend } from "./promo.ts";
+import { computePromo, goalNotice, mondayOf, previousWeek, resultNotice, weekOf, type PromoSpend } from "./promo.ts";
 
 const days = (from: string, n: number, m: string, v: number) =>
   Array.from({ length: n }, (_, i) => {
@@ -37,7 +37,22 @@ test("개인·팀 판정: 직전 주 일평균 + 목표", () => {
   assert.equal(r.team.current - r.team.base, 80000);
   assert.equal(r.team.achieved, false);
   assert.equal(r.complete, true);
-  assert.match(noticeText(r, base, week, "1시간", "2시간"), /▶ 서진원[\s\S]*결과: 달성/);
+  const goal = goalNotice(r, week);
+  assert.match(goal, /- 진원 : \+60,000원 \(1,060,000원\)/);
+  assert.match(goal, /- 팀 전체 : \+90,000원 \(1,590,000원\)/);
+  const res = resultNotice(r, "2026-10-11", 1, 2);
+  assert.match(res, /\[조기퇴근 프로모션 결과 \(10\/11 기준\)\]/);
+  assert.match(res, /✅  서진원 : 목표 달성 \(\+10,000원\) → 1시간 조기퇴근/);
+  assert.match(res, /❌  박규진 : 목표 미달 \(-20,000원\)/);
+  assert.match(res, /🏆 서진원 : 1시간 조기퇴근/);
+  // 팀까지 달성하면 개인 달성자는 총 3시간, 나머지는 2시간
+  const r2 = computePromo(data, [
+    { staff_id: "a", name: "서진원", increment: 60000, scope: "naver", in_team: true },
+    { staff_id: "b", name: "박규진", increment: 30000, scope: "naver_meta", in_team: true },
+  ], base, week, 50000);
+  const res2 = resultNotice(r2, "2026-10-11", 1, 2);
+  assert.match(res2, /→ 전원 금요일 2시간 조기퇴근/);
+  assert.match(res2, /🏆 서진원 : 총 3시간 조기퇴근\n🏆 박규진 : 2시간 조기퇴근/);
 });
 
 test("주 중간: 들어온 날까지만 평균", () => {

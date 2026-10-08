@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getMe } from "@/lib/supabase/server";
 import { todayKST } from "@/lib/billing-calc";
-import { computePromo, noticeText, type PersonResult, type PromoTarget, type TeamResult } from "@/lib/promo";
+import { computePromo, goalNotice, resultNotice, type PersonResult, type PromoTarget, type TeamResult } from "@/lib/promo";
 import { fetchPromoSpend } from "@/lib/ads-legacy";
 import { ConfirmSubmit } from "../billing/panel";
 import { addTarget, closeWeek, createWeek, removeTarget, reopenWeek, saveWeek } from "./actions";
@@ -13,6 +13,7 @@ const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8))}`;
 type WeekRow = {
   id: string; title: string | null; base_start: string; base_end: string; week_start: string; week_end: string;
   team_increment: number; reward_personal: string; reward_team: string; memo: string | null; closed_at: string | null;
+  reward_personal_hours: number; reward_team_hours: number;
   results: { people: PersonResult[]; team: TeamResult; complete: boolean; fullDays: number } | null;
   promo_targets: { staff_id: string; increment: number; scope: "naver" | "naver_meta"; in_team: boolean; staff: { name: string } | null }[];
 };
@@ -85,7 +86,9 @@ export default async function Promotions() {
           .sort((a, b) => b.increment - a.increment);
         const r = w.results ?? (spend.data ? computePromo(spend.data, targets, { start: w.base_start, end: w.base_end }, { start: w.week_start, end: w.week_end }, Number(w.team_increment)) : null);
         const state = w.closed_at ? "마감" : w.week_start > today ? "예정" : w.week_end < today ? "평가 끝 · 마감 전" : "진행 중";
-        const notice = r ? noticeText({ ...r, fullDays: r.fullDays ?? 7 }, { start: w.base_start, end: w.base_end }, { start: w.week_start, end: w.week_end }, w.reward_personal, w.reward_team) : "";
+        const asOf = (w.results as { data_through?: { naver?: string } } | null)?.data_through?.naver ?? spend.data?.naver_through ?? today;
+        const goal = r ? goalNotice({ ...r, fullDays: r.fullDays ?? 7 }, { start: w.week_start, end: w.week_end }) : "";
+        const result = r ? resultNotice({ ...r, fullDays: r.fullDays ?? 7 }, asOf < w.week_end ? asOf : w.week_end, Number(w.reward_personal_hours), Number(w.reward_team_hours)) : "";
         const remaining = (staff ?? []).filter((s) => !targets.some((t) => t.staff_id === s.id));
         const hist = (history ?? []).filter((h) => h.week_id === w.id);
         return (
@@ -94,11 +97,12 @@ export default async function Promotions() {
               <div>
                 <h2 className="text-lg font-bold">{w.title || `${md(w.week_start)}~${md(w.week_end)} 주`} <span className={`chip ml-1 ${state === "진행 중" ? "chip-info" : state === "마감" ? "chip-muted" : "chip-warn"}`}>{state}</span></h2>
                 <p className="text-xs text-ink-soft">기준 {md(w.base_start)}~{md(w.base_end)} 일평균 → 평가 {md(w.week_start)}~{md(w.week_end)} 일평균{r && !r.complete && state !== "예정" ? ` · ${Math.min(...r.people.map((p) => p.days), 7)}일치 반영 (데이터가 들어오는 대로 갱신)` : ""}</p>
-                <p className="mt-1 text-sm">🎁 개인 달성: {w.reward_personal} · 팀 달성: {w.reward_team}</p>
+                <p className="mt-1 text-sm">🎁 개인 달성: {Number(w.reward_personal_hours)}시간 조기퇴근 ({w.reward_personal}) · 팀 달성: 금요일 {Number(w.reward_team_hours)}시간 조기퇴근 ({w.reward_team})</p>
                 {w.memo && <p className="text-xs text-ink-soft">{w.memo}</p>}
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {notice && <CopyNotice text={notice} />}
+                {goal && <CopyNotice text={goal} label="① 목표 공지 복사" />}
+                {result && state !== "예정" && <CopyNotice text={result} label={w.closed_at ? "② 결과 공지 복사" : "② 결과 공지 (중간) 복사"} />}
                 {manager && !w.closed_at && w.week_end < today && <ConfirmSubmit action={closeWeek.bind(null, w.id)} label="마감 (결과 확정)" confirmText="지금 숫자로 결과를 확정할까요? 마감 후에는 마감을 풀어야 고칠 수 있습니다." />}
                 {manager && w.closed_at && <ConfirmSubmit action={reopenWeek.bind(null, w.id)} label="마감 풀기" confirmText="마감을 풀고 다시 계산할까요?" />}
               </div>
@@ -124,7 +128,7 @@ export default async function Promotions() {
                 <summary className="cursor-pointer text-sm font-semibold">목표·기간 고치기 (연휴·광고비 변동 반영)</summary>
                 <div className="mt-3 space-y-3">
                   <WeekForm
-                    key={`${w.id}-${targets.map((t) => `${t.staff_id}${t.increment}${t.scope}${t.in_team}`).join()}`}
+                    key={`${w.id}-${targets.map((t) => `${t.staff_id}${t.increment}${t.scope}${t.in_team}`).join()}-${w.reward_personal_hours}${w.reward_team_hours}`}
                     action={saveWeek.bind(null, w.id)}
                     week={w}
                     targets={targets}
