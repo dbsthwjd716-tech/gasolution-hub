@@ -55,7 +55,7 @@ export function CreateLoginButton({ action, label = "로그인 계정 만들기"
         <p className="mt-1">임시 비밀번호 <b className="font-mono text-sm">{state.password}</b>
           <button type="button" className="ml-2 text-brand underline" onClick={() => navigator.clipboard.writeText(state.password!).then(() => setCopied(true))}>{copied ? "복사됨" : "복사"}</button>
         </p>
-        <p className="mt-1 text-ink-soft">지금만 보입니다. 직원에게 직접 전달하고, 첫 로그인 뒤 메뉴 아래 「비밀번호」에서 바꾸도록 안내해 주세요.</p>
+        <p className="mt-1 text-ink-soft">지금만 보입니다. 직원에게 직접 전달하고, 첫 로그인 뒤 메뉴 아래 「내 계정·서류」에서 바꾸도록 안내해 주세요.</p>
       </div>
     );
   }
@@ -84,7 +84,7 @@ export function LoginCell({ hasLogin, canCreate, canReset, create, reset, name, 
           <span className="mt-1 block">임시 비밀번호 <b className="font-mono text-sm">{shown.password}</b>
             <button type="button" className="ml-2 text-brand underline" onClick={() => navigator.clipboard.writeText(shown.password!).then(() => setCopied(true))}>{copied ? "복사됨" : "복사"}</button>
           </span>
-          <span className="mt-1 block text-ink-soft">지금만 보입니다. 본인에게 직접 전달하고, 첫 로그인 뒤 메뉴 아래 「비밀번호」에서 바꾸도록 안내해 주세요.</span>
+          <span className="mt-1 block text-ink-soft">지금만 보입니다. 본인에게 직접 전달하고, 첫 로그인 뒤 메뉴 아래 「내 계정·서류」에서 바꾸도록 안내해 주세요.</span>
         </span>
       ) : hasLogin ? (
         canReset && (

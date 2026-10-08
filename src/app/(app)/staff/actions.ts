@@ -52,7 +52,7 @@ export async function saveJoinDate(id: string, _p: FormState, f: FormData): Prom
 }
 
 // 로그인 계정 만들기 / 비밀번호 초기화: 데이터베이스에서 바로 만들고 임시 비밀번호를 한 번만 보여 줌
-//   대표는 누구나, 팀장은 일반 직원만 (데이터베이스 규칙). 직원은 첫 로그인 후 「비밀번호」에서 바꿈
+//   대표는 누구나, 팀장은 일반 직원만 (데이터베이스 규칙). 직원은 첫 로그인 후 「내 계정·서류」에서 바꿈
 export async function createLogin(id: string, _p: FormState, _f: FormData): Promise<FormState> {
   const { supabase } = await manager();
   const { data: st } = await supabase.from("staff").select("name,email").eq("id", id).maybeSingle();

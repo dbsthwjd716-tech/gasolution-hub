@@ -15,6 +15,7 @@ export function FileUpload({
   folder,
   accept = "application/pdf,image/png,image/jpeg,image/webp",
   multiple = true,
+  bucket = FILE_BUCKET,
   hint,
   onBusyChange,
   onChange,
@@ -23,6 +24,7 @@ export function FileUpload({
   folder: string;
   accept?: string;
   multiple?: boolean;
+  bucket?: string;
   hint?: string;
   onBusyChange?: (busy: boolean) => void;
   onChange?: (files: UploadedFile[]) => void;
@@ -51,7 +53,7 @@ export function FileUpload({
       }
       const ext = (file.name.split(".").pop() ?? "bin").toLowerCase().replace(/[^a-z0-9]/g, "");
       const path = `${folder}/${ym}/${Date.now()}-${++seq}.${ext || "bin"}`;
-      const { error: e } = await supabase.storage.from(FILE_BUCKET).upload(path, file, { contentType: file.type, upsert: false });
+      const { error: e } = await supabase.storage.from(bucket).upload(path, file, { contentType: file.type, upsert: false });
       if (e) {
         setError(`${file.name}: 올리지 못했습니다 (${e.message})`);
         continue;
