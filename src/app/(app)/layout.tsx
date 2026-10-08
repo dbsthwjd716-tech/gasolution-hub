@@ -30,9 +30,12 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <span className="font-semibold">{viewer?.name ?? user.email}</span>
           {viewer && <span className="chip chip-info ml-1.5 !px-2 !text-[11px]">{ROLE_LABEL[viewer.role]}</span>}
         </p>
-        <form action={signOut}>
-          <button className="rounded-md px-2 py-1 text-xs text-ink-soft hover:bg-[#f4f7fd] hover:text-ink">로그아웃</button>
-        </form>
+        <span className="flex items-center">
+          <a href="/account" className="rounded-md px-2 py-1 text-xs text-ink-soft hover:bg-[#f4f7fd] hover:text-ink">비밀번호</a>
+          <form action={signOut}>
+            <button className="rounded-md px-2 py-1 text-xs text-ink-soft hover:bg-[#f4f7fd] hover:text-ink">로그아웃</button>
+          </form>
+        </span>
       </div>
     </div>
   );

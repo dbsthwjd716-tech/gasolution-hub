@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { checkBizNo } from "@/lib/bizno";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getMe } from "@/lib/supabase/server";
 import { parseUploaded } from "@/lib/uploads";
 
 export type FormState = { error: string; ok?: string };
@@ -66,6 +66,7 @@ function clientFields(f: FormData) {
       status: s(f, "status") ?? "active",
       kinds: kinds(f),
       memo: s(f, "memo"),
+      ...(f.has("owner_staff_id") ? { owner_staff_id: s(f, "owner_staff_id") } : {}),
     },
   } as const;
 }
@@ -167,4 +168,19 @@ export async function addClientDocument(clientId: string, _p: FormState, f: Form
   if (error) return { error: friendly(error.message, error.code) };
   revalidatePath(`/clients/${clientId}`);
   return { error: "", ok: "올렸습니다." };
+}
+
+// 거래처 삭제: 대표·팀장. 계약·정산·바이럴 등 연결된 기록이 있으면 지울 수 없음 → 상태를 '종료'로
+export async function deleteClientRecord(id: string) {
+  const { supabase, me } = await getMe();
+  if (!me || me.role === "staff") redirect(`/clients/${id}?error=${encodeURIComponent("거래처 삭제는 대표·팀장만 할 수 있습니다.")}`);
+  const { data, error } = await supabase.from("clients").delete().eq("id", id).select("id");
+  if (error || !data?.length) {
+    const msg = error?.code === "23503"
+      ? "계약서·정산서·바이럴 등 연결된 기록이 있어 지울 수 없습니다. 거래가 끝났다면 상태를 '종료'로 바꿔 주세요."
+      : "삭제하지 못했습니다" + (error ? `: ${error.message}` : " (권한 없음)");
+    redirect(`/clients/${id}?error=${encodeURIComponent(msg)}`);
+  }
+  revalidatePath("/clients");
+  redirect("/clients");
 }

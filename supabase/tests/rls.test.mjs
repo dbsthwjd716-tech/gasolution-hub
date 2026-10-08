@@ -44,7 +44,7 @@ await expectOk('팀장은 아무 거래처나 수정', async () => {
   const r = await as('lead', `update clients set memo='팀장 메모' where id=$1`, [clientA]);
   if (r.affectedRows !== 1) throw new Error('0건');
 });
-await expectBlocked('팀장도 거래처 삭제는 못 함', () => as('lead', `delete from clients where id=$1`, [clientB]));
+await expectBlocked('직원은 거래처 삭제 못 함', () => as('kim', `delete from clients where id=$1 returning id`, [clientB]));
 
 console.log('브랜드·계정·담당자');
 const br = await expectOk('김직원이 본인 거래처에 브랜드 추가', () =>

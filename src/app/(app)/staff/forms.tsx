@@ -1,0 +1,68 @@
+"use client";
+
+import { useActionState, useState } from "react";
+import type { FormState } from "./actions";
+
+type Action = (p: FormState, f: FormData) => Promise<FormState>;
+
+function Msg({ state }: { state: FormState }) {
+  if (state.error) return <p className="text-xs text-danger" role="alert">{state.error}</p>;
+  if (state.ok) return <p className="text-xs text-[var(--ok-ink)]">{state.ok}</p>;
+  return null;
+}
+
+export function AddStaffForm({ action, ceo }: { action: Action; ceo: boolean }) {
+  const [state, formAction, pending] = useActionState(action, { error: "" });
+  return (
+    <form action={formAction} className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+      <input name="name" placeholder="이름" className="field" required aria-label="이름" />
+      <input name="email" type="email" placeholder="이메일 (로그인 아이디)" className="field lg:col-span-2" required aria-label="이메일" />
+      <label className="flex items-center gap-2 text-xs text-ink-soft">입사일<input type="date" name="join_date" className="field" /></label>
+      {ceo ? (
+        <select name="role" defaultValue="staff" className="field" aria-label="역할">
+          <option value="staff">직원</option>
+          <option value="lead">팀장</option>
+          <option value="ceo">대표</option>
+        </select>
+      ) : <input type="hidden" name="role" value="staff" />}
+      <div className="flex items-center gap-3 sm:col-span-2 lg:col-span-5">
+        <button className="btn" disabled={pending}>{pending ? "등록 중…" : "직원 등록"}</button>
+        <Msg state={state} />
+      </div>
+    </form>
+  );
+}
+
+export function JoinDateForm({ action, value }: { action: Action; value: string | null }) {
+  const [state, formAction, pending] = useActionState(action, { error: "" });
+  return (
+    <form action={formAction} className="flex items-center gap-1">
+      <input type="date" name="join_date" defaultValue={value ?? ""} className="field !w-36 !py-1 text-xs" aria-label="입사일" />
+      <button className="text-xs text-brand hover:underline" disabled={pending}>저장</button>
+      {state.error ? <span className="text-[11px] text-danger">{state.error}</span> : state.ok ? <span className="text-[11px] text-[var(--ok-ink)]">✓</span> : null}
+    </form>
+  );
+}
+
+// 임시 비밀번호는 이 화면에서 한 번만 보여 줌 (저장하지 않음)
+export function CreateLoginButton({ action, ready }: { action: Action; ready: boolean }) {
+  const [state, formAction, pending] = useActionState(action, { error: "" });
+  const [copied, setCopied] = useState(false);
+  if (state.password) {
+    return (
+      <div className="rounded-lg border border-[#cddcff] bg-brand-soft p-2 text-xs">
+        <p>{state.ok}</p>
+        <p className="mt-1">임시 비밀번호 <b className="font-mono text-sm">{state.password}</b>
+          <button type="button" className="ml-2 text-brand underline" onClick={() => navigator.clipboard.writeText(state.password!).then(() => setCopied(true))}>{copied ? "복사됨" : "복사"}</button>
+        </p>
+        <p className="mt-1 text-ink-soft">지금만 보입니다. 직원에게 직접 전달하고, 첫 로그인 뒤 「비밀번호 변경」에서 바꾸도록 안내해 주세요.</p>
+      </div>
+    );
+  }
+  return (
+    <form action={formAction} className="inline">
+      <button className="text-xs font-semibold text-brand hover:underline disabled:text-ink-soft" disabled={pending || !ready} title={ready ? "" : "설정이 필요합니다"}>{pending ? "만드는 중…" : "로그인 계정 만들기"}</button>
+      {state.error && <span className="ml-2 text-[11px] text-danger">{state.error}</span>}
+    </form>
+  );
+}

@@ -24,6 +24,7 @@ export type ClientValues = {
   fee_min_fee?: number;
   fee_vat_mode?: "included" | "excluded";
   fee_note?: string | null;
+  owner_staff_id?: string | null;
 };
 
 const comma = (v: string) => {
@@ -92,12 +93,14 @@ export function ClientForm({
   submitLabel,
   showBrand = false,
   readOnly = false,
+  staff = [],
 }: {
   action: Action;
   initial?: ClientValues;
   submitLabel: string;
   showBrand?: boolean;
   readOnly?: boolean;
+  staff?: { id: string; name: string }[];
 }) {
   const [state, formAction, pending] = useActionState(action, { error: "" });
   const [bn, setBn] = useState(formatBizNo(initial.business_number ?? null) || "");
@@ -161,6 +164,16 @@ export function ClientForm({
             </label>
           </div>
         </div>
+        {staff.length > 0 && (
+          <div>
+            <label className="label" htmlFor="owner_staff_id">우리 담당 직원</label>
+            <select id="owner_staff_id" name="owner_staff_id" defaultValue={initial.owner_staff_id ?? ""} className="field">
+              <option value="">담당 없음</option>
+              {staff.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select>
+            <p className="mt-1 text-xs text-ink-soft">이 거래처를 맡은 직원 (처음 등록한 사람이 자동으로 들어갑니다)</p>
+          </div>
+        )}
         <div>
           <label className="label" htmlFor="status">상태</label>
           <select id="status" name="status" defaultValue={initial.status ?? "active"} className="field">

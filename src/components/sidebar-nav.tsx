@@ -46,6 +46,7 @@ export const GROUPS: Group[] = [
     ],
   },
   { key: "pay", label: "급여 · 인센티브", items: [{ href: "/payroll", label: "급여 · 인센티브", icon: "won" }] },
+  { key: "org", label: "조직", managerOnly: true, items: [{ href: "/staff", label: "직원 관리", icon: "users" }] },
 ];
 
 const ICONS = {
@@ -63,6 +64,8 @@ const ICONS = {
   clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
   calendar: <><rect x="3.5" y="5" width="17" height="16" rx="2" /><path d="M3.5 10h17M8 3v4M16 3v4" /></>,
   won: <path d="M4 6l3 12 2.5-8h5L17 18l3-12M3 11h18M3 14h18" />,
+  users: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5" /><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 14.8c1.7.8 2.7 2.5 3 5.2" /></>,
+  check: <><rect x="3.5" y="3.5" width="17" height="17" rx="3" /><path d="M8 12.5l3 3 5-6" /></>,
   search: <><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></>,
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,
   collapse: <><rect x="3.5" y="4" width="17" height="16" rx="2" /><path d="M9 4v16M15 10l-2 2 2 2" /></>,

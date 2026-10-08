@@ -16,7 +16,15 @@ export default async function Payroll(props: PageProps<"/payroll">) {
   if (me.role === "staff") return <MyPayroll supabase={supabase} name={me.name} />;
   // 기본: 지난달 실적
   const ym = typeof sp.m === "string" && /^\d{4}-\d{2}$/.test(sp.m) ? sp.m : shiftYm(currentYm(), -1);
-  const { month, tiers, profiles, rows, team } = await loadPayrollMonth(supabase, ym);
+  const [{ month, tiers, profiles, rows, team }, { data: months }] = await Promise.all([
+    loadPayrollMonth(supabase, ym),
+    supabase.from("payroll_months").select("month,status").order("month", { ascending: false }).limit(12),
+  ]);
+  const thisYm = currentYm();
+  const lastYm = shiftYm(thisYm, -1);
+  // 달 탭: 만든 달 + 지난달·이번 달 (아직 안 만들었어도 보이게)
+  const tabs = [...new Set([thisYm, lastYm, ...(months ?? []).map((x) => x.month.slice(0, 7)), ym])].sort().reverse();
+  const statusOf = (t: string) => (months ?? []).find((x) => x.month.slice(0, 7) === t)?.status;
   const closed = month?.status === "closed";
   const missing = profiles.filter((p) => p.is_active && !rows.some((r) => r.staff_id === p.staff_id));
   const sum = rows.reduce((t, r) => t + r.total, 0);
@@ -27,15 +35,26 @@ export default async function Payroll(props: PageProps<"/payroll">) {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">급여 · 인센티브</h1>
-          <p className="text-sm text-ink-soft">대표·팀장만 볼 수 있습니다. {y}년 {m}월 실적 기준</p>
+          <p className="text-sm text-ink-soft">{y}년 {m}월 실적 기준 · 전체 급여는 대표·팀장만 보고, 직원은 마감된 본인 급여만 봅니다.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link href={`/payroll?m=${shiftYm(ym, -1)}`} className="btn btn-ghost">← 이전 달</Link>
-          <span className="chip chip-info">{y}년 {m}월 실적</span>
-          <Link href={`/payroll?m=${shiftYm(ym, 1)}`} className="btn btn-ghost">다음 달 →</Link>
-          <Link href="/payroll/settings" className="btn btn-ghost">급여 설정 · 구간표</Link>
-        </div>
+        <Link href="/payroll/settings" className="btn btn-ghost">급여 설정 · 구간표</Link>
       </header>
+      <nav className="flex flex-wrap items-center gap-2" aria-label="급여 달">
+        <Link href={`/payroll?m=${shiftYm(ym, -1)}`} className="rounded-lg px-2 py-1.5 text-sm text-ink-soft hover:text-brand" aria-label="이전 달">‹</Link>
+        {tabs.map((t) => {
+          const on = t === ym;
+          const st = statusOf(t);
+          const [ty, tm] = t.split("-").map(Number);
+          const tag = t === thisYm ? "이번 달" : t === lastYm ? "지난달" : `${ty !== y ? `${ty}년 ` : ""}`;
+          return (
+            <Link key={t} href={`/payroll?m=${t}`} className={`rounded-xl border px-3 py-2 text-left transition ${on ? "border-brand bg-brand text-white" : "border-[#dbe3ee] bg-white hover:border-brand"}`}>
+              <span className="block text-sm font-bold">{tag && <span className={`mr-1 text-xs font-semibold ${on ? "text-white/80" : "text-brand"}`}>{tag}</span>}{tm}월 실적</span>
+              <span className={`block text-[11px] ${on ? "text-white/80" : "text-ink-soft"}`}>{st === "closed" ? "마감" : st === "draft" ? "작성 중" : "시작 전"}</span>
+            </Link>
+          );
+        })}
+        <Link href={`/payroll?m=${shiftYm(ym, 1)}`} className="rounded-lg px-2 py-1.5 text-sm text-ink-soft hover:text-brand" aria-label="다음 달">›</Link>
+      </nav>
       {typeof sp.error === "string" && <p className="glass p-3 text-sm text-danger">{sp.error}</p>}
 
       {!month ? (

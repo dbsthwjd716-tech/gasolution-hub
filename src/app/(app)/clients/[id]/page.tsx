@@ -4,7 +4,8 @@ import { formatBizNo } from "@/lib/bizno";
 import { createClient } from "@/lib/supabase/server";
 import { CONTRACT_STATUS, markupText, statusLabel, won } from "@/lib/billing-calc";
 import { signedLinks } from "@/lib/storage";
-import { addAccount, addAlias, addBrand, addClientDocument, addContact, updateClientRecord } from "../actions";
+import { addAccount, addAlias, addBrand, addClientDocument, addContact, deleteClientRecord, updateClientRecord } from "../actions";
+import { ConfirmSubmit } from "../../billing/panel";
 import { ClientForm, DocumentUploadForm, InlineForm } from "../forms";
 
 const PLATFORM_LABEL: Record<string, string> = {
@@ -28,9 +29,10 @@ type Account = {
 
 export default async function ClientDetail(props: PageProps<"/clients/[id]">) {
   const { id } = await props.params;
+  const sp = await props.searchParams;
   const supabase = await createClient();
 
-  const [{ data: c }, { data: canEdit }] = await Promise.all([
+  const [{ data: c }, { data: canEdit }, { data: isManager }, { data: staff }] = await Promise.all([
     supabase
       .from("clients")
       .select(
@@ -39,6 +41,8 @@ export default async function ClientDetail(props: PageProps<"/clients/[id]">) {
       .eq("id", id)
       .maybeSingle(),
     supabase.rpc("can_edit_client", { cid: id }),
+    supabase.rpc("is_manager"),
+    supabase.from("staff").select("id,name").eq("is_active", true).order("name"),
   ]);
   if (!c) notFound();
 
@@ -70,12 +74,14 @@ export default async function ClientDetail(props: PageProps<"/clients/[id]">) {
           </p>
         </div>
         {!canEdit && <span className="chip chip-muted">보기 전용 · 담당자나 팀장만 수정할 수 있습니다</span>}
+        {isManager && <ConfirmSubmit action={deleteClientRecord.bind(null, id)} label="거래처 삭제" confirmText={`${c.company_name} 거래처를 삭제할까요? 되돌릴 수 없습니다.`} />}
       </header>
+      {typeof sp.error === "string" && <p className="glass p-3 text-sm text-danger">{sp.error}</p>}
 
       <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
         <section className="glass p-5">
           <h2 className="mb-4 font-bold">사업자 정보</h2>
-          <ClientForm action={updateClientRecord.bind(null, id)} initial={c} submitLabel="저장" readOnly={!canEdit} />
+          <ClientForm action={updateClientRecord.bind(null, id)} initial={c} submitLabel="저장" readOnly={!canEdit} staff={isManager ? (staff ?? []) : []} />
         </section>
 
         <div className="space-y-4">
