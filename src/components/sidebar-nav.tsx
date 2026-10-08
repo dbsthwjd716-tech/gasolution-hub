@@ -77,9 +77,11 @@ export function SidebarNav({ manager }: { manager: boolean }) {
 
   return (
     <>
-      <button type="button" onClick={() => setOpen((v) => !v)} className="btn btn-ghost !px-3 !py-1.5 text-xs md:hidden" aria-expanded={open}>
-        {open ? "메뉴 닫기" : "메뉴"}
-      </button>
+      <div className="md:hidden">
+        <button type="button" onClick={() => setOpen((v) => !v)} className="btn btn-ghost !px-3 !py-1.5 text-xs" aria-expanded={open}>
+          {open ? "메뉴 닫기" : "메뉴"}
+        </button>
+      </div>
       <nav className={`${open ? "block" : "hidden"} w-full space-y-3 md:block`}>
         {groups.map((g) => {
           const here = g.items.some((i) => i.href === active);
