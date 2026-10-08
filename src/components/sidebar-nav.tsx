@@ -3,7 +3,7 @@
 import Link from "next/link";
 
 // 왼쪽 메뉴: 회사에서 중요한 순서대로 묶음 (광고 운영 → 보고서 → 거래처 → 계약·정산 → 프로모션 → 근태 → 급여)
-export type NavItem = { href: string; label: string; icon: IconName; soon?: boolean };
+export type NavItem = { href: string; label: string; icon: IconName; soon?: boolean; managerOnly?: boolean };
 type Group = { key: string; label: string; items: NavItem[]; managerOnly?: boolean };
 
 export const HOME = { href: "/home", label: "통합 홈", sub: "오늘 할 일 · 광고 현황 · 알림" };
@@ -17,6 +17,7 @@ export const GROUPS: Group[] = [
       { href: "/ads/routines", label: "루틴 · 약속", icon: "check" },
       { href: "/ads", label: "비즈머니 현황", icon: "wallet" },
       { href: "/ads/spend", label: "광고비 실적", icon: "chart" },
+      { href: "/ads/accounts", label: "광고주 등록 · 피이관", icon: "receipt", managerOnly: true },
     ],
   },
   { key: "report", label: "보고서", items: [{ href: "/reports", label: "광고 보고서", icon: "doc", soon: true }] },
@@ -84,9 +85,10 @@ export function Icon({ name, className = "h-[18px] w-[18px]", stroke = 1.7 }: { 
 
 export function visibleGroups(manager: boolean) {
   // 직원에게 급여 메뉴는 '내 급여' (본인 마감 급여만)
-  return GROUPS.filter((g) => manager || !g.managerOnly).map((g) =>
-    !manager && g.key === "pay" ? { ...g, items: g.items.map((i) => ({ ...i, label: "내 급여" })) } : g,
-  );
+  return GROUPS.filter((g) => manager || !g.managerOnly).map((g) => ({
+    ...g,
+    items: g.items.filter((i) => manager || !i.managerOnly).map((i) => (!manager && g.key === "pay" ? { ...i, label: "내 급여" } : i)),
+  }));
 }
 
 // 지금 화면에 해당하는 메뉴: 가장 길게 맞는 주소 하나만 표시
