@@ -328,7 +328,7 @@ export function BillingForm({
         )}
       </fieldset>
 
-      <aside className="h-fit space-y-3 rounded-xl border border-[var(--glass-border)] bg-white/70 p-4 lg:sticky lg:top-4">
+      <aside className="h-fit space-y-3 rounded-xl border border-[var(--glass-border)] bg-white/70 p-4 lg:sticky lg:top-20">
         <p className="font-bold">자동 계산</p>
         <dl className="grid grid-cols-[1fr_auto] gap-y-1 text-sm tabular-nums">
           {isSettlement && (
