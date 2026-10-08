@@ -14,6 +14,7 @@ type Row = { name: string; naver: number; meta: number; viral: number; handover:
 // 광고비 실적: 전 매체(네이버 · 메타 · 바이럴) 한 화면, 모두 VAT 별도
 //   대표·팀장: 전체 또는 담당자 한 명 / 직원: 본인만
 //   서진원 인계건: 지금 담당자 실적에 들어가 있고, 서진원에게는 따로 보기만 (총 소진액에 넣지 않음)
+//   서진원만 예외: 총 소진액 = 네이버 + 메타 (바이럴은 따로), total 소진액 = 네이버 + 메타 + 인계건
 export default async function Spend(props: PageProps<"/ads/spend">) {
   const sp = await props.searchParams;
   const { supabase, me } = await getMe();
@@ -56,12 +57,15 @@ export default async function Spend(props: PageProps<"/ads/spend">) {
   }
   for (const r of d.meta) row(r.manager).meta += Number(r.spend) / 1.1;
   for (const r of viral ?? []) if (r.staff_name) row(r.staff_name).viral += Number(r.sale_amount);
-  const rows = [...by.values()].filter((r) => mine(r.name) && r.naver + r.meta + r.viral + r.handover > 0).sort((a, b) => b.naver + b.meta + b.viral - (a.naver + a.meta + a.viral));
+  const rowTotal = (r: Row) => (r.name === HANDOVER_OWNER ? r.naver + r.meta : r.naver + r.meta + r.viral);
+  const rows = [...by.values()].filter((r) => mine(r.name) && r.naver + r.meta + r.viral + r.handover > 0).sort((a, b) => rowTotal(b) - rowTotal(a));
   const sum = rows.reduce((t, r) => ({ naver: t.naver + r.naver, meta: t.meta + r.meta, viral: t.viral + r.viral }), { naver: 0, meta: 0, viral: 0 });
-  const total = sum.naver + sum.meta + sum.viral;
+  const total = rows.reduce((t, r) => t + rowTotal(r), 0);
+  const jw = who === HANDOVER_OWNER; // 서진원 한 명만 볼 때
   const handoverRows = d.naver.filter((r) => r.handover_cost);
   const showHandover = mine(HANDOVER_OWNER) && (handoverRows.length > 0 || (manager && who === HANDOVER_OWNER));
   const handover = handoverRows.reduce((t, r) => t + Number(r.handover_cost), 0);
+  const grand = total + handover; // 서진원 total 소진액 (인계건 포함)
 
   // 상세
   const naverList = d.naver.filter((r) => mine(r.manager));
@@ -100,12 +104,13 @@ export default async function Spend(props: PageProps<"/ads/spend">) {
         </form>
       </header>
 
-      <section className={`grid gap-3 sm:grid-cols-2 ${showHandover ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}>
-        <Card label="총 소진액" value={total} sub="네이버 + 메타 + 바이럴" strong />
+      <section className={`grid gap-3 sm:grid-cols-2 ${jw ? "lg:grid-cols-3 2xl:grid-cols-6" : showHandover ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}>
+        <Card label="총 소진액" value={total} sub={jw ? "네이버 + 메타" : who ? "네이버 + 메타 + 바이럴" : `네이버 + 메타 + 바이럴 (${HANDOVER_OWNER}은 바이럴 제외)`} strong />
         <Card label="네이버" value={sum.naver} sub={`유상실적 (검색광고 + GFA) · ${d.naver_through ? `${md(d.naver_through)}까지 반영` : "자료 없음"} · ${share(sum.naver)}`} />
         <Card label="메타" value={sum.meta} sub={`${d.meta_through ? `${md(d.meta_through)}까지` : "자료 없음"} · ${share(sum.meta)}`} />
         <Card label="바이럴" value={sum.viral} sub={`판매가 · 입금일 기준 · ${share(sum.viral)}`} />
-        {showHandover && <Card label={`${HANDOVER_OWNER} 인계건`} value={handover} sub="총 소진액에 넣지 않고 따로 보기" handover />}
+        {showHandover && <Card label={jw ? "인계건" : `${HANDOVER_OWNER} 인계건`} value={handover} sub={jw ? "서진원 인계건" : "총 소진액에 넣지 않고 따로 보기"} handover />}
+        {jw && <Card label="total 소진액" value={grand} sub="네이버 + 메타 + 인계건" strong />}
       </section>
 
       <section className="glass p-4">
@@ -120,6 +125,7 @@ export default async function Spend(props: PageProps<"/ads/spend">) {
                 <th className="px-3 text-right font-medium">바이럴</th>
                 <th className="px-3 text-right font-medium">총 소진액</th>
                 {showHandover && <th className="px-4 text-right font-medium text-[#7a5200]">인계건 (별도)</th>}
+                {jw && <th className="px-4 text-right font-medium">total 소진액</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-[#edf1f7]">
@@ -129,8 +135,9 @@ export default async function Spend(props: PageProps<"/ads/spend">) {
                   <td className="px-3 text-right">{won(r.naver)}</td>
                   <td className="px-3 text-right">{won(r.meta)}</td>
                   <td className="px-3 text-right">{won(r.viral)}</td>
-                  <td className="px-3 text-right font-bold">{won(r.naver + r.meta + r.viral)}</td>
+                  <td className="px-3 text-right font-bold">{won(rowTotal(r))}</td>
                   {showHandover && <td className="bg-[#fffbf0] px-4 text-right text-[#7a5200]">{r.handover ? won(r.handover) : "-"}</td>}
+                  {jw && <td className="px-4 text-right font-bold text-brand">{won(rowTotal(r) + r.handover)}</td>}
                 </tr>
               ))}
               {rows.length > 1 && (
@@ -143,13 +150,13 @@ export default async function Spend(props: PageProps<"/ads/spend">) {
                   {showHandover && <td className="bg-[#fff6dd] px-4 text-right text-[#7a5200]">{won(handover)}</td>}
                 </tr>
               )}
-              {!rows.length && <tr><td colSpan={6} className="py-8 text-center text-ink-soft">이 기간 실적이 없습니다.</td></tr>}
+              {!rows.length && <tr><td colSpan={7} className="py-8 text-center text-ink-soft">이 기간 실적이 없습니다.</td></tr>}
             </tbody>
           </table>
         </div>
         <p className="mt-2 text-xs text-ink-soft">
           네이버는 담당자가 올린 유상실적(검색광고와 GFA 포함, 광고주의 지금 담당자 기준)이라 올린 날짜까지만 반영됩니다. 메타는 담당 배정 기간 기준 광고비 ÷ 1.1.
-          {showHandover && " 인계건은 그룹이 「진원 인계건」인 광고주의 소진으로, 지금 담당자의 네이버 실적에 이미 들어가 있어 총 소진액에 다시 더하지 않습니다."}
+          {showHandover && ` 인계건은 「인계건 지정」된 광고주의 소진으로, 지금 담당자의 네이버 실적에 이미 들어가 있습니다. ${HANDOVER_OWNER}은 총 소진액 = 네이버 + 메타(바이럴 제외), total 소진액 = 네이버 + 메타 + 인계건입니다.`}
         </p>
       </section>
 
