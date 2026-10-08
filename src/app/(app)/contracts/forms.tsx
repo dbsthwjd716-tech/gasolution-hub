@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { FileUpload } from "@/components/file-upload";
+import { ClientPicker } from "@/components/client-picker";
 import type { FormState } from "./actions";
 
 type Action = (prev: FormState, f: FormData) => Promise<FormState>;
@@ -71,12 +72,15 @@ export function ContractForm({
       <fieldset disabled={readOnly} className="grid gap-4 md:grid-cols-2">
         <div>
           <label className="label" htmlFor="client_id">거래처 *</label>
-          <select id="client_id" name="client_id" required value={clientId} onChange={(e) => setClientId(e.target.value)} className="field">
-            <option value="">거래처 선택</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>{c.company_name}{c.business_number ? "" : " (사업자번호 없음)"}</option>
-            ))}
-          </select>
+          <ClientPicker
+            id="client_id"
+            name="client_id"
+            required
+            disabled={readOnly}
+            value={clientId}
+            onChange={setClientId}
+            clients={clients.map((c) => ({ id: c.id, company_name: c.company_name, business_number: c.business_number, note: c.business_number ? undefined : "(사업자번호 없음)" }))}
+          />
         </div>
         <div>
           <label className="label" htmlFor="brand_id">브랜드 (선택)</label>

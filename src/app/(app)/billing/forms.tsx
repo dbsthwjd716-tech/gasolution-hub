@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
 import { FileUpload } from "@/components/file-upload";
+import { ClientPicker } from "@/components/client-picker";
 import { calcEstimate, calcEstimateLine, calcSettlement, DOC_TYPE_LABEL, markupText, previousMonthRange, won, type DocType, type MarkupType, type VatMode } from "@/lib/billing-calc";
 import { formatBizNo } from "@/lib/bizno";
 import { pickContract } from "@/lib/contract-pick";
@@ -181,20 +182,18 @@ export function BillingForm({
           </div>
           <div>
             <label className="label" htmlFor="client_id">거래처 *</label>
-            <select
+            <ClientPicker
               id="client_id"
               name="client_id"
               required
+              disabled={readOnly}
               value={clientId}
-              onChange={(e) => {
-                setClientId(e.target.value);
-                if (isSettlement) applyContract(e.target.value, docDate);
+              onChange={(id) => {
+                setClientId(id);
+                if (isSettlement) applyContract(id, docDate);
               }}
-              className="field"
-            >
-              <option value="">거래처 선택</option>
-              {clients.map((c) => <option key={c.id} value={c.id}>{c.company_name}{c.business_number ? "" : " (사업자번호 없음)"}</option>)}
-            </select>
+              clients={clients.map((c) => ({ id: c.id, company_name: c.company_name, business_number: c.business_number, note: c.business_number ? undefined : "(사업자번호 없음)" }))}
+            />
           </div>
           <div>
             <label className="label" htmlFor="document_date">작성일</label>
