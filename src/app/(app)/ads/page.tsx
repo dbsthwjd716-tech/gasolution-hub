@@ -2,6 +2,9 @@ import Link from "next/link";
 import { getMe } from "@/lib/supabase/server";
 import { changePct, daysInMonth, hiddenReason, netCost, netDaily, SORT_KEYS, sortBy, STATUS_LABEL, summarize, type BizRow, type SortDir, type SortKey, type Summary } from "@/lib/ads";
 import { fetchBizmoney } from "@/lib/ads-legacy";
+import { RefreshBizmoney } from "./refresh-button";
+
+export const maxDuration = 300; // 지금 새로고침(1~2분)을 기다림
 
 const won = (v: number) => Math.round(v).toLocaleString("ko-KR");
 const kstTime = (ts: string | null | undefined) =>
@@ -91,11 +94,13 @@ export default async function Bizmoney(props: PageProps<"/ads">) {
         <div>
           <h1 className="text-2xl font-bold">비즈머니 현황</h1>
           <p className="text-sm text-ink-soft">
-            {snap ? `${Number(snap.slice(5, 7))}월 ${Number(snap.slice(8))}일 아침 ${kstTime(captured[0])}~${kstTime(captured[captured.length - 1])} 확인 기준` : "아침 기록 없음"}
+            {snap ? `${Number(snap.slice(5, 7))}월 ${Number(snap.slice(8))}일 ${kstTime(captured[0])}~${kstTime(captured[captured.length - 1])} 확인 기준` : "오늘 기록 없음"}
             {" · "}{snap ? `${snap.slice(0, 8)}01 ~ ${snap} (${daysInMonth(snap)}일 중 ${Number(snap.slice(8))}일)` : ""}
             {!manager && " · 내 담당 광고주"}
           </p>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+        <RefreshBizmoney />
         <form className="flex flex-wrap items-center gap-2" action="/ads">
           {manager && (
             <select name="m" defaultValue={who} className="field !w-auto">
@@ -110,6 +115,7 @@ export default async function Bizmoney(props: PageProps<"/ads">) {
           {sortDir !== "desc" && <input type="hidden" name="d" value={sortDir} />}
           <button className="btn btn-ghost">보기</button>
         </form>
+        </div>
       </header>
 
       <Cards s={s} prevLabel={prevLabel} />

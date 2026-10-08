@@ -3,6 +3,10 @@ import { getMe, ROLE_LABEL } from "@/lib/supabase/server";
 import { signOut } from "../login/actions";
 import { AppShell } from "@/components/app-shell";
 import { startPreview, stopPreview } from "./preview-actions";
+import { todayKST } from "@/lib/billing-calc";
+import { kstTime } from "@/lib/attendance";
+import { act } from "./attendance/actions";
+import { HeaderClockOut } from "./attendance/forms";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const { user, me, viewer, preview, supabase } = await getMe();
@@ -11,6 +15,12 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const staff = canPreview && !preview
     ? ((await supabase.from("staff").select("id,name").eq("is_active", true).eq("role", "staff").order("name")).data ?? [])
     : [];
+
+  // 오른쪽 위 퇴근하기: 오늘 출근했고 아직 퇴근 전일 때만 (미리보기 중에는 숨김)
+  const todayRec = me && !preview
+    ? (await supabase.from("attendance_records").select("clock_in,clock_out").eq("staff_id", me.id).eq("work_date", todayKST()).maybeSingle()).data
+    : null;
+  const topRight = todayRec?.clock_in && !todayRec.clock_out ? <HeaderClockOut action={act} clockIn={kstTime(todayRec.clock_in)} /> : null;
 
   const footer = (
     <div className="space-y-3">
@@ -51,7 +61,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   ) : null;
 
   return (
-    <AppShell manager={!!me && me.role !== "staff"} name={me?.name ?? ""} role={me ? (preview ? "직원 화면 미리보기" : ROLE_LABEL[me.role]) : ""} footer={footer} banner={banner}>
+    <AppShell manager={!!me && me.role !== "staff"} name={me?.name ?? ""} role={me ? (preview ? "직원 화면 미리보기" : ROLE_LABEL[me.role]) : ""} footer={footer} banner={banner} topRight={topRight}>
       {me ? (
         children
       ) : (

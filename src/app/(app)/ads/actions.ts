@@ -1,8 +1,8 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { getMe } from "@/lib/supabase/server";
-import { fetchBizmoney } from "@/lib/ads-legacy";
+import { ADS_LEGACY_TAG, fetchBizmoney } from "@/lib/ads-legacy";
 
 // 오늘의 운영 알림 '확인' — 담당자는 예전 대시보드 기록에서 다시 찾음 (화면에서 보낸 값을 믿지 않음)
 export async function ackAlert(key: string) {
@@ -47,4 +47,28 @@ export async function ackAlerts(formData: FormData) {
   if (rows.length) await supabase.from("ads_alert_acks").upsert(rows, { onConflict: "alert_key", ignoreDuplicates: true });
   revalidatePath("/ads/today");
   revalidatePath("/home");
+}
+
+// 비즈머니 지금 새로고침: 예전 대시보드가 전 광고주 비즈머니·소진을 지금 시각으로 다시 확인 (약 1~2분) → 화면 캐시 비움
+export type RefreshState = { error: string; ok?: string };
+export async function refreshBizmoney(_p: RefreshState, _f: FormData): Promise<RefreshState> {
+  void _p; void _f;
+  const { me, preview } = await getMe();
+  if (!me) return { error: "로그인이 필요합니다." };
+  if (preview) return { error: "직원 화면 미리보기 중에는 새로고침할 수 없습니다." };
+  const token = process.env.DASHBOARD_HUB_TOKEN;
+  if (!token) return { error: "예전 대시보드 연결 설정이 없습니다 (Vercel 환경변수)." };
+  const base = process.env.DASHBOARD_APP_URL || "https://naver-bizmoney-dashboard.vercel.app";
+  try {
+    const res = await fetch(`${base}/api/hub?route=hub-bizmoney-refresh`, { method: "POST", headers: { "x-hub-token": token }, cache: "no-store", signal: AbortSignal.timeout(290_000) });
+    const json = (await res.json().catch(() => null)) as { ok?: boolean; message?: string; processedCount?: number; failedCount?: number } | null;
+    if (!res.ok || !json?.ok) return { error: `새로고침하지 못했습니다: ${json?.message ?? res.status}` };
+    updateTag(ADS_LEGACY_TAG);
+    revalidatePath("/ads");
+    revalidatePath("/ads/today");
+    revalidatePath("/home");
+    return { error: "", ok: "지금 시각 기준으로 다시 확인했습니다." };
+  } catch {
+    return { error: "시간이 오래 걸려 끊겼습니다. 1~2분 뒤 페이지를 새로고침해 보세요 (뒤에서 계속 확인 중일 수 있습니다)." };
+  }
 }

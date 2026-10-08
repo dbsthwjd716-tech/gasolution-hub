@@ -327,3 +327,16 @@ export function ImportForm({ action }: { action: Action }) {
     </form>
   );
 }
+
+// 화면 오른쪽 위 퇴근하기 (어느 화면에서나). 출근한 날 퇴근 전에만 보임
+export function HeaderClockOut({ action, clockIn }: { action: Action; clockIn: string }) {
+  const [state, formAction, pending] = useActionState(action, { error: "" });
+  if (state.ok) return <span className="chip chip-ok whitespace-nowrap">퇴근 완료</span>;
+  return (
+    <form action={formAction} onSubmit={(e) => { if (!window.confirm(`지금 퇴근 처리할까요? (출근 ${clockIn})`)) e.preventDefault(); }} className="flex items-center gap-2">
+      <input type="hidden" name="op" value="clock_out" />
+      <button className="btn !px-3 !py-1.5 text-xs whitespace-nowrap" disabled={pending} title={`오늘 출근 ${clockIn}`}>{pending ? "…" : "퇴근하기"}</button>
+      {state.error && <span className="max-w-[180px] text-[11px] leading-tight text-danger">{state.error}</span>}
+    </form>
+  );
+}

@@ -15,7 +15,7 @@ export default async function StaffDetail(props: PageProps<"/staff/[id]">) {
       <header>
         <Link href="/staff" className="text-xs text-brand underline">← 직원 관리</Link>
         <h1 className="mt-1 text-2xl font-bold">{s.name} <span className="text-base font-normal text-ink-soft">{ROLE_LABEL[s.role]}{s.is_active ? "" : " · 퇴사"}</span></h1>
-        <p className="text-sm text-ink-soft">근로계약서 · 비밀유지서약서 · 통장사본 · 주민등록등본(입사 후), 자격증(취득 시), 퇴직사유서(퇴사 시)</p>
+        <p className="text-sm text-ink-soft">근로계약서 · 비밀유지서약서 · 통장사본 · 주민등록등본 · 신분증(입사 후), 자격증(취득 시), 퇴직사유서(퇴사 시)</p>
       </header>
       <StaffDocsPanel supabase={supabase} staffId={s.id} active={s.is_active} manager self={s.id === me.id} />
     </div>

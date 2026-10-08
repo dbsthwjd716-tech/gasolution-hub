@@ -28,7 +28,7 @@ async function client() {
 }
 
 function done(ok: string): FormState {
-  revalidatePath("/attendance", "layout");
+  revalidatePath("/", "layout"); // 오른쪽 위 퇴근하기 버튼까지 모든 화면 새로 그림
   revalidatePath("/home");
   return { error: "", ok };
 }

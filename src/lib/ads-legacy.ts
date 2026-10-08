@@ -1,5 +1,7 @@
 import "server-only";
 import { fetchRetry } from "./fetch-retry";
+
+export const ADS_LEGACY_TAG = "ads-legacy";
 import type { BizRow, PrevRow, Run } from "./ads";
 
 // 예전 네이버 대시보드의 광고 운영 데이터를 읽어 옴 (읽기 전용 통로 hub_ads_export, 매일 아침 수집은 예전 대시보드가 계속 함)
@@ -19,7 +21,7 @@ async function call<T>(kind: string, start: string | null, end: string | null): 
       method: "POST",
       headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),
-      next: { revalidate: 300 }, // 아침에 한 번 바뀌는 데이터라 5분 동안은 다시 묻지 않음
+      next: { revalidate: 300, tags: [ADS_LEGACY_TAG] }, // 아침에 한 번 바뀌는 데이터라 5분 동안은 다시 묻지 않음 (지금 새로고침 때는 바로 비움)
     });
     if (!res.ok) return { error: `예전 대시보드에서 읽지 못했습니다 (${res.status}).` };
     return { data: (await res.json()) as T };
