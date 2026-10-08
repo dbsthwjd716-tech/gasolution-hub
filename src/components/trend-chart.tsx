@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { Point } from "@/lib/trend";
 
 const W = 720;
-const H = 240;
+const H = 290;
 const PAD = { l: 48, r: 12, t: 12, b: 28 };
 
 const short = (v: number) => (v >= 100_000_000 ? `${(v / 100_000_000).toFixed(1)}억` : v >= 10_000 ? `${Math.round(v / 10_000).toLocaleString("ko-KR")}만` : `${v}`);
