@@ -5,10 +5,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState, type ReactNode } from "react";
 import { activeItem, HOME, Icon, SidebarNav, visibleGroups, type NavItem } from "./sidebar-nav";
 
-type Props = { manager: boolean; name: string; role: string; footer: ReactNode; children: ReactNode };
+type Props = { manager: boolean; name: string; role: string; footer: ReactNode; banner?: ReactNode; children: ReactNode };
 
 // 화면 틀: 왼쪽 흰색 메뉴 + 위쪽 막대(화면 이름 · 검색 · 내 이름)
-export function AppShell({ manager, name, role, footer, children }: Props) {
+export function AppShell({ manager, name, role, footer, banner, children }: Props) {
   const path = usePathname();
   const [collapsed, setCollapsed] = useState(false); // 컴퓨터: 아이콘만 보기
   const [open, setOpen] = useState(false); // 휴대폰: 메뉴 열기
@@ -70,6 +70,7 @@ export function AppShell({ manager, name, role, footer, children }: Props) {
             </div>
           </div>
         </header>
+        {banner}
         <main className="mx-auto max-w-[1440px] px-4 py-6 md:px-8 md:py-7">{children}</main>
       </div>
     </div>

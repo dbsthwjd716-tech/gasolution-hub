@@ -12,11 +12,16 @@ export function supabaseEnv() {
   return { url, key };
 }
 
+export const VIEW_AS_COOKIE = "hub_view_as";
+
 // 로그인한 직원 권한으로 동작하는 Supabase 연결 (보안 규칙이 그대로 적용됨)
+// 직원 화면 미리보기 중이면 머리말에 그 직원 id를 실어 보냄 → 데이터베이스가 대표·팀장일 때만 그 직원 권한으로 바꾸고 저장은 막음
 export async function createClient() {
   const cookieStore = await cookies();
   const { url, key } = supabaseEnv();
+  const viewAs = cookieStore.get(VIEW_AS_COOKIE)?.value;
   return createServerClient(url, key, {
+    ...(viewAs ? { global: { headers: { "x-hub-view-as": viewAs } } } : {}),
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -52,17 +57,19 @@ export const ROLE_LABEL: Record<Staff["role"], string> = {
 };
 
 // 지금 로그인한 사람의 직원 정보. 로그인은 했지만 직원으로 등록되지 않았으면 null
+//   미리보기 중이면 me = 보고 있는 직원, viewer = 실제 로그인한 대표·팀장
 export async function getMe() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { supabase, user: null, me: null };
-  const { data: me } = await supabase
-    .from("staff")
-    .select("id,name,email,role,can_view_cost")
-    .eq("auth_user_id", user.id)
-    .eq("is_active", true)
-    .maybeSingle<Staff>();
-  return { supabase, user, me };
+  if (!user) return { supabase, user: null, me: null, viewer: null, preview: false };
+  const cols = "id,name,email,role,can_view_cost";
+  const { data: real } = await supabase.from("staff").select(cols).eq("auth_user_id", user.id).eq("is_active", true).maybeSingle<Staff>();
+  const viewAs = (await cookies()).get(VIEW_AS_COOKIE)?.value;
+  if (real && real.role !== "staff" && viewAs) {
+    const { data: target } = await supabase.from("staff").select(cols).eq("id", viewAs).eq("is_active", true).eq("role", "staff").maybeSingle<Staff>();
+    if (target) return { supabase, user, me: target, viewer: real, preview: true };
+  }
+  return { supabase, user, me: real, viewer: real, preview: false };
 }

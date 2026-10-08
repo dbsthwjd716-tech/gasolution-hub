@@ -11,6 +11,7 @@ const suites = [
   ['예전 CRM 옮기기', './leads-import.test.mjs'],
   ['근태·연차', './attendance.test.mjs'],
   ['주간 프로모션', './promotions.test.mjs'],
+  ['직원 화면 미리보기', './view-as.test.mjs'],
 ];
 let failed = 0;
 for (const [name, file] of suites) {
