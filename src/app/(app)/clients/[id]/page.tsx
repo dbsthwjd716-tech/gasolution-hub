@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { formatBizNo } from "@/lib/bizno";
-import { createClient } from "@/lib/supabase/server";
+import { getMe } from "@/lib/supabase/server";
 import { CONTRACT_STATUS, markupText, statusLabel, won } from "@/lib/billing-calc";
 import { signedLinks } from "@/lib/storage";
-import { addAccount, addAlias, addBrand, addClientDocument, addContact, deleteClientRecord, updateClientRecord } from "../actions";
+import { addAccount, addAlias, addBrand, addClientDocument, addContact, deleteClientRecord, linkAdvertiser, unlinkAdvertiser, updateClientRecord } from "../actions";
 import { ConfirmSubmit } from "../../billing/panel";
 import { ClientForm, DocumentUploadForm, InlineForm } from "../forms";
 
@@ -27,12 +27,21 @@ type Account = {
   media_account_assignments: { valid_to: string | null; staff: { name: string } | null }[];
 };
 
+type AdAccount = {
+  id: number; name: string | null; customer_id: string | null; manager: string | null; adcost_source: string; meta_account: string | null;
+  bizmoney: number | null; status: string | null; expected_days: number | null; snapshot_date: string | null; naver_month: number | null; meta_month: number | null;
+};
+const AD_STATUS: Record<string, { label: string; cls: string }> = {
+  danger: { label: "위험", cls: "chip-danger" }, warning: { label: "주의", cls: "chip-warn" }, normal: { label: "정상", cls: "chip-ok" },
+  transferred: { label: "피이관", cls: "chip-muted" }, failed: { label: "확인 실패", cls: "chip-muted" },
+};
+
 export default async function ClientDetail(props: PageProps<"/clients/[id]">) {
   const { id } = await props.params;
   const sp = await props.searchParams;
-  const supabase = await createClient();
+  const { supabase, me } = await getMe();
 
-  const [{ data: c }, { data: canEdit }, { data: isManager }, { data: staff }] = await Promise.all([
+  const [{ data: c }, { data: canEdit }, { data: isManager }, { data: staff }, { data: adsRaw }] = await Promise.all([
     supabase
       .from("clients")
       .select(
@@ -43,8 +52,14 @@ export default async function ClientDetail(props: PageProps<"/clients/[id]">) {
     supabase.rpc("can_edit_client", { cid: id }),
     supabase.rpc("is_manager"),
     supabase.from("staff").select("id,name").eq("is_active", true).order("name"),
+    supabase.rpc("ads_client_accounts", { p_client: id }),
   ]);
   if (!c) notFound();
+  // 연결된 광고 계정 (직원은 본인 담당만)
+  const ads = ((adsRaw ?? []) as AdAccount[]).filter((a) => isManager || a.manager === me?.name);
+  const linkable = isManager
+    ? ((await supabase.from("ads_advertisers").select("id,name,customer_id").is("client_id", null).order("name").limit(1000)).data ?? [])
+    : [];
 
   const brands = (c.brands ?? []) as { id: string; name: string; is_active: boolean; media_accounts: Account[] }[];
   const contacts = (c.client_contacts ?? []) as { id: string; name: string; role_label: string | null; phone: string | null; email: string | null }[];
@@ -85,6 +100,39 @@ export default async function ClientDetail(props: PageProps<"/clients/[id]">) {
         </section>
 
         <div className="space-y-4">
+          <section className="glass p-5">
+            <h2 className="font-bold">광고 계정 <span className="text-xs font-normal text-ink-soft">· 비즈머니 · 이번 달 광고비</span></h2>
+            <p className="mb-3 text-xs text-ink-soft">광고주 등록의 네이버·메타 계정 중 사업자번호가 같은 곳은 자동으로 연결됩니다. 네이버는 유상실적(VAT 별도), 메타는 광고비(VAT 포함).</p>
+            {ads.length ? (
+              <ul className="divide-y divide-[#edf1f7] text-sm">
+                {ads.map((a) => (
+                  <li key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+                    <span className="min-w-0 flex-1">
+                      <Link href={`/ads?q=${encodeURIComponent(a.customer_id ?? a.name ?? "")}`} className="font-semibold hover:text-brand">{a.name}</Link>
+                      <span className="block text-[11px] text-ink-soft">{a.customer_id ? `네이버 ${a.customer_id}` : ""}{a.meta_account ? ` · 메타 ${a.meta_account}` : ""} · 담당 {a.manager ?? "-"}</span>
+                    </span>
+                    {a.status && <span className={`chip ${AD_STATUS[a.status]?.cls ?? "chip-muted"}`}>{AD_STATUS[a.status]?.label ?? a.status}</span>}
+                    {a.bizmoney != null && <span className="text-xs tabular-nums">비즈머니 {won(a.bizmoney)}{a.expected_days != null ? ` · ${Math.floor(Number(a.expected_days))}일분` : ""}</span>}
+                    <span className="text-xs tabular-nums text-ink-soft">이번 달 {won(Number(a.naver_month ?? 0) + Number(a.meta_month ?? 0))}</span>
+                    {isManager && <ConfirmSubmit action={unlinkAdvertiser.bind(null, id, a.id)} label="연결 풀기" confirmText={`${a.name} 광고 계정 연결을 풀까요?`} />}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-ink-soft">연결된 광고 계정이 없습니다.</p>
+            )}
+            {isManager && linkable.length > 0 && (
+              <div className="mt-3 border-t border-[var(--glass-border)] pt-3">
+                <InlineForm action={linkAdvertiser.bind(null, id)} submitLabel="광고 계정 연결">
+                  <input name="advertiser" list={`ads-${id}`} placeholder="광고주명이나 Customer ID로 찾기" className="field" aria-label="연결할 광고주" />
+                  <datalist id={`ads-${id}`}>
+                    {linkable.map((x) => <option key={x.id} value={`${x.name ?? ""} · ${x.customer_id ?? "메타"} #${x.id}`} />)}
+                  </datalist>
+                </InlineForm>
+              </div>
+            )}
+          </section>
+
           <section className="glass p-5">
             <h2 className="font-bold">브랜드와 매체 계정</h2>
             <p className="mb-4 text-xs text-ink-soft">브랜드(광고주) 밑에 실제 광고 계정이 붙습니다.</p>

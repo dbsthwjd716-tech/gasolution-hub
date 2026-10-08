@@ -184,3 +184,21 @@ export async function deleteClientRecord(id: string) {
   revalidatePath("/clients");
   redirect("/clients");
 }
+
+// 광고 계정(네이버·메타 광고주) 연결 / 풀기 — 대표·팀장만 (데이터베이스가 확인)
+//   입력: "광고주명 · Customer ID" 목록에서 고른 값 (맨 끝의 #번호로 찾음)
+export async function linkAdvertiser(clientId: string, _p: FormState, f: FormData): Promise<FormState> {
+  const m = (s(f, "advertiser") ?? "").match(/#(\d+)\s*$/);
+  if (!m) return { error: "목록에서 광고주를 골라 주세요." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("ads_link_client", { p_advertiser: Number(m[1]), p_client: clientId });
+  if (error) return { error: error.message.includes("대표·팀장") ? "대표·팀장만 연결할 수 있습니다." : error.message };
+  revalidatePath(`/clients/${clientId}`);
+  return { error: "", ok: "연결했습니다." };
+}
+
+export async function unlinkAdvertiser(clientId: string, advertiserId: number) {
+  const supabase = await createClient();
+  await supabase.rpc("ads_link_client", { p_advertiser: advertiserId, p_client: null });
+  revalidatePath(`/clients/${clientId}`);
+}

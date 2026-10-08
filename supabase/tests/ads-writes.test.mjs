@@ -41,5 +41,17 @@ export async function run() {
     if (!x.rows.length) throw new Error('막힘');
   });
   await expectBlocked('직원이 비밀값 꺼내기', () => as('kim', `select ads_local_credential_secret(1, 'naver_searchad')`));
+  await expectOk('사업자번호가 같은 거래처와 자동 연결 + 거래처 화면 요약', async () => {
+    const c = (await as('lead', `insert into clients(company_name, business_number) values ('가게상회', '1234567800') returning id`)).rows[0].id;
+    await as('lead', `select ads_set_business_number($1, '123-45-67800')`, [id]);
+    const n = (await as('lead', `select ads_autolink_clients() n`)).rows[0].n;
+    if (n !== 1) throw new Error(`연결 ${n}`);
+    const list = (await as('kim', `select ads_client_accounts($1) v`, [c])).rows[0].v;
+    if (list.length !== 1 || list[0].customer_id !== '123') throw new Error(JSON.stringify(list));
+    await as('lead', `select ads_link_client($1, null)`, [id]);
+    if ((await as('kim', `select ads_client_accounts($1) v`, [c])).rows[0].v.length) throw new Error('안 풀림');
+  });
+  await expectBlocked('직원이 연결 바꾸기', () => as('kim', `select ads_link_client($1, null)`, [id]));
+  await expectBlocked('사업자번호 형식', () => as('lead', `select ads_set_business_number($1, '12345')`, [id]));
   return finish();
 }
