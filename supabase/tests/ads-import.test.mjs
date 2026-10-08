@@ -23,6 +23,18 @@ export async function run() {
     const r = await as('kim', `select count(*) n from ads_advertisers`);
     if (Number(r.rows[0].n) !== 2) throw new Error('안 보임');
   });
+  await expectOk('수집기 읽기: 광고주 목록·오늘 끝난 비즈머니 (열쇠 필요)', async () => {
+    const r = (await as(null, `select ads_collector_read($1, 'advertisers') v`, [tok])).rows[0].v;
+    if (r.length !== 2 || r[0].customer_id !== '111') throw new Error(JSON.stringify(r));
+    await as(null, `select ads_import($1, 'ads_bizmoney_snapshots', $2::jsonb)`, [tok, JSON.stringify([
+      { snapshot_date: '2026-10-08', customer_id: '111', status: 'normal', source: 'naver_api', gross_total_cost: 5 },
+      { snapshot_date: '2026-10-08', customer_id: '222', status: 'failed', source: 'error', gross_total_cost: null }])]);
+    const done = (await as(null, `select ads_collector_read($1, 'snapshot_done', '{"from":"2026-10-08"}') v`, [tok])).rows[0].v;
+    if (JSON.stringify(done) !== '["111"]') throw new Error(JSON.stringify(done));
+    const t = (await as(null, `select ads_collector_read($1, 'snapshot_targets') v`, [tok])).rows[0].v;
+    if (t.rows.length !== 1) throw new Error(JSON.stringify(t));
+  });
+  await expectBlocked('수집기 읽기: 틀린 열쇠', () => as(null, `select ads_collector_read($1, 'advertisers')`, ['x'.repeat(64)]));
   await expectBlocked('직원이 수집 작업 실행', () => as('kim', `select ads_run_job('bizmoney-snapshot')`));
   await expectOk('비밀값은 금고에, 표에는 금고 id만 / 열쇠 있어야 꺼냄', async () => {
     await as(null, `select ads_store_env($1, '{"NAVER_SOJUNG_API_KEY":"k1","EVIL":"x"}'::jsonb)`, [tok]);

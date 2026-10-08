@@ -19,6 +19,19 @@ export const IMPORT_ORDER = [
   "ads_transferred_daily",
 ] as const;
 
+// 기준 표만 (수집 결과 표 제외): 나란히 비교 기간에 매일 맞춤
+export const REF_TABLES = [
+  "ads_groups",
+  "ads_advertisers",
+  "ads_group_members",
+  "ads_group_handover_history",
+  "ads_manager_keys",
+  "ads_perf_accounts",
+  "ads_perf_assignments",
+  "ads_meta_accounts",
+  "ads_transferred_daily",
+] as const;
+
 export async function runImport(token: string, tables: readonly string[] = IMPORT_ORDER) {
   const PAGE = 2000;
   const counts: Record<string, number> = {};
