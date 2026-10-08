@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { readRetryFetch } from "../fetch-retry";
 
 export function supabaseEnv() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -21,7 +22,7 @@ export async function createClient() {
   const { url, key } = supabaseEnv();
   const viewAs = cookieStore.get(VIEW_AS_COOKIE)?.value;
   return createServerClient(url, key, {
-    ...(viewAs ? { global: { headers: { "x-hub-view-as": viewAs } } } : {}),
+    global: { fetch: readRetryFetch, ...(viewAs ? { headers: { "x-hub-view-as": viewAs } } : {}) },
     cookies: {
       getAll() {
         return cookieStore.getAll();

@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchRetry } from "./fetch-retry";
 
 // 예전 대시보드에서 근태·연차 기록을 읽어 옴 (읽기 전용 통로 hub_export_attendance, 급여 실적과 같은 연결 설정 사용)
 export type LegacyAttendance = {
@@ -18,7 +19,7 @@ export async function fetchLegacyAttendance(): Promise<{ data?: LegacyAttendance
   const token = process.env.DASHBOARD_HUB_TOKEN;
   if (!url || !key || !token) return { error: "예전 대시보드 연결 설정이 없습니다 (Vercel 환경변수)." };
   try {
-    const res = await fetch(`${url}/rest/v1/rpc/hub_export_attendance`, {
+    const res = await fetchRetry(`${url}/rest/v1/rpc/hub_export_attendance`, {
       method: "POST",
       headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({ p_token: token }),

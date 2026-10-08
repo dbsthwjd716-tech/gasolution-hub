@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchRetry } from "./fetch-retry";
 
 // 기존 대시보드(naver-bizmoney-dashboard)에서 담당자별 월 소진액을 읽어 옴 (읽기 전용 통로 hub_month_spend)
 //   네이버: 이관 광고비(VAT 제외) 합계, 광고주의 현재 담당자 기준
@@ -13,7 +14,7 @@ export async function fetchDashboardSpend(month: string): Promise<{ rows: Dashbo
   const token = process.env.DASHBOARD_HUB_TOKEN;
   if (!url || !key || !token) return { rows: [], error: "대시보드 연결 설정이 없습니다 (Vercel 환경변수)." };
   try {
-    const res = await fetch(`${url}/rest/v1/rpc/hub_month_spend_v2`, {
+    const res = await fetchRetry(`${url}/rest/v1/rpc/hub_month_spend_v2`, {
       method: "POST",
       headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({ p_month: month, p_token: token }),

@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchRetry } from "./fetch-retry";
 import type { BizRow, PrevRow, Run } from "./ads";
 
 // 예전 네이버 대시보드의 광고 운영 데이터를 읽어 옴 (읽기 전용 통로 hub_ads_export, 매일 아침 수집은 예전 대시보드가 계속 함)
@@ -14,7 +15,7 @@ async function call<T>(kind: string, start: string | null, end: string | null): 
       : kind === "roas" ? ["hub_roas_watch", { p_token: token }]
       : kind === "perf" ? ["hub_perf_spend", { p_start: start, p_end: end, p_token: token }]
       : ["hub_ads_export", { p_kind: kind, p_start: start, p_end: end, p_token: token }];
-    const res = await fetch(`${url}/rest/v1/rpc/${fn}`, {
+    const res = await fetchRetry(`${url}/rest/v1/rpc/${fn}`, {
       method: "POST",
       headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),

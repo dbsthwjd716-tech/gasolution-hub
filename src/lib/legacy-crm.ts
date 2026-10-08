@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchRetry } from "./fetch-retry";
 
 // 예전 인입 CRM(gasolution-lead-crm)에서 문의·상담 기록·상태 이력을 읽어 옴 (읽기 전용 통로 hub_export_leads)
 export type LegacyExport = { leads: { id: string; inquiry_at: string; company_name: string; owner: string | null }[]; logs: unknown[]; history: unknown[] };
@@ -9,7 +10,7 @@ export async function fetchLegacyLeads(): Promise<{ data?: LegacyExport; error?:
   const token = process.env.CRM_HUB_TOKEN;
   if (!url || !key || !token) return { error: "예전 CRM 연결 설정이 없습니다 (Vercel 환경변수)." };
   try {
-    const res = await fetch(`${url}/rest/v1/rpc/hub_export_leads`, {
+    const res = await fetchRetry(`${url}/rest/v1/rpc/hub_export_leads`, {
       method: "POST",
       headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({ p_token: token }),
