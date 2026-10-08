@@ -7,8 +7,9 @@ import { fetchBizmoney, fetchOpsStatus, fetchRoasWatch } from "@/lib/ads-legacy"
 import { followUp } from "@/lib/leads";
 import { loadOpenLeads } from "@/lib/leads-data";
 import { cycleLabel, dueToday, type Routine } from "@/lib/routines";
-import { ackAlert } from "../actions";
-import { addRoutine, checkRoutine, logLeadContact, uncheckRoutine } from "../ops-actions";
+import { ackAlerts } from "../actions";
+import { CheckSection, type CheckItem } from "../check-list";
+import { addRoutine, completeRoutines, logLeadContact, uncheckRoutine } from "../ops-actions";
 import { LeadContactForm, RoutineForm } from "../ops-forms";
 
 // 요청 시점의 시각 (화면을 그릴 때마다 바뀌는 값이라 따로 받음)
@@ -94,6 +95,43 @@ export default async function OpsToday(props: PageProps<"/ads/today">) {
     : [];
   const advertisers = [...new Set(rows.map((r) => r.advertiser_name ?? "").filter(Boolean))].sort((a, b) => a.localeCompare(b, "ko"));
   const canAck = (a: OpsAction) => manager || a.manager === me.name;
+  const alertSection = (title: string, hint: string, list: OpsAction[]) => {
+    const open = list.filter((a) => !ackBy.has(a.key));
+    const done = list.filter((a) => ackBy.has(a.key));
+    return (
+      <CheckSection
+        title={title}
+        hint={hint}
+        action={ackAlerts}
+        items={open.map((a): CheckItem => ({
+          key: a.key,
+          disabled: !canAck(a),
+          content: (
+            <>
+              <p>
+                <span className={`chip ${a.severity === 1 ? "chip-danger" : a.severity === 2 ? "chip-warn" : "chip-info"} mr-2`}>{a.label}</span>
+                <b>{a.advertiserName}</b>{manager && <span className="ml-1 text-xs text-ink-soft">· {a.manager}</span>}
+              </p>
+              <p className="mt-0.5 tabular-nums">{a.title}</p>
+              <p className="text-xs text-ink-soft">{a.detail}</p>
+            </>
+          ),
+        }))}
+        empty={done.length ? "모두 확인했습니다." : "오늘 확인할 것이 없습니다."}
+        done={done.length ? (
+          <details className="mt-2 text-xs text-ink-soft">
+            <summary className="cursor-pointer">오늘 확인 {done.length}건</summary>
+            <ul className="mt-1 space-y-1">
+              {done.map((a) => {
+                const k = ackBy.get(a.key) as Ack | undefined;
+                return <li key={a.key}>✓ {a.label} · {a.advertiserName} — {k?.staff?.name ?? ""} {kst(k?.created_at)}</li>;
+              })}
+            </ul>
+          </details>
+        ) : null}
+      />
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -130,36 +168,36 @@ export default async function OpsToday(props: PageProps<"/ads/today">) {
         </div>
       </section>
 
-      <AlertSection title="비즈머니 체크" hint="잔액이 적거나 곧 바닥나는 광고주 (이번 달 소진이 있는 곳만)" list={bizList} ackBy={ackBy} manager={manager} canAck={canAck} />
-      <AlertSection title="어제 대비 소진 급변" hint="최근 24시간 소진이 평소 일평균 대비 ±50% 이상이거나 0원인 곳 (평소 일평균 3만원·1만원 이상)" list={spendList} ackBy={ackBy} manager={manager} canAck={canAck} />
-      <AlertSection
-        title="수익률 급변"
-        hint={roas.data?.date ? `어제(${md(roas.data.date)}) 검색광고 수익률이 그 전 7일보다 ±50% 이상 바뀐 곳 (어제 광고비 1만원 이상)` : roas.error ?? "검색광고 수집 기록 없음"}
-        list={roasList}
-        ackBy={ackBy}
-        manager={manager}
-        canAck={canAck}
-      />
+      {alertSection("비즈머니 체크", "잔액이 적거나 곧 바닥나는 광고주 (이번 달 소진이 있는 곳만)", bizList)}
+      {alertSection("어제 대비 소진 급변", "최근 24시간 소진이 평소 일평균 대비 ±50% 이상이거나 0원인 곳", spendList)}
+      {alertSection(
+        "수익률 급변",
+        roas.data?.date ? `어제(${md(roas.data.date)}) 검색광고 수익률이 그 전 7일보다 ±50% 이상 바뀐 곳` : roas.error ?? "검색광고 수집 기록 없음",
+        roasList,
+      )}
 
-      <Section title="광고주 루틴 · 약속" count={routineOpen.length} hint="보고서 발송, 순위 체크처럼 매주·매월 하는 일과 광고주와 약속한 일" action={<Link href="/ads/routines" className="text-xs font-semibold text-brand hover:underline">루틴 관리 ›</Link>}>
-        <ul className="divide-y divide-[#edf1f7] text-sm">
-          {routineOpen.map(({ r, due }) => (
-            <li key={`${r.id}|${due.date}`} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
-              <div>
-                <p>
-                  {due.late > 0 && <span className="chip chip-danger mr-1.5">{due.late}일 지남</span>}
-                  <b>{r.title}</b>
-                  {r.advertiser_name && <span className="ml-1.5 text-ink-soft">· {r.advertiser_name}</span>}
-                  {manager && !who && <span className="ml-1 text-xs text-ink-soft">· {r.staff?.name}</span>}
-                </p>
-                <p className="text-xs text-ink-soft">{cycleLabel(r)}{due.late > 0 ? ` · 원래 ${md(due.date)}` : ""}{r.memo ? ` · ${r.memo}` : ""}</p>
-              </div>
-              <form action={checkRoutine.bind(null, r.id, due.date)}><button className="btn !px-3 !py-1.5 text-xs">완료</button></form>
-            </li>
-          ))}
-          {!routineOpen.length && <li className="py-2 text-ink-soft">오늘 남은 루틴·약속이 없습니다.</li>}
-        </ul>
-        {routineDone.length > 0 && (
+      <CheckSection
+        title="광고주 루틴 · 약속"
+        hint="보고서 발송·순위 체크처럼 정해 둔 일과 광고주와 약속한 일"
+        action={completeRoutines}
+        button="완료"
+        allLabel="이 항목 모두 완료"
+        empty="오늘 남은 루틴·약속이 없습니다."
+        items={routineOpen.map(({ r, due }): CheckItem => ({
+          key: `${r.id}|${due.date}`,
+          content: (
+            <>
+              <p>
+                {due.late > 0 && <span className="chip chip-danger mr-1.5">{due.late}일 지남</span>}
+                <b>{r.title}</b>
+                {r.advertiser_name && <span className="ml-1.5 text-ink-soft">· {r.advertiser_name}</span>}
+                {manager && !who && <span className="ml-1 text-xs text-ink-soft">· {r.staff?.name}</span>}
+              </p>
+              <p className="text-xs text-ink-soft">{cycleLabel(r)}{due.late > 0 ? ` · 원래 ${md(due.date)}` : ""}{r.memo ? ` · ${r.memo}` : ""}</p>
+            </>
+          ),
+        }))}
+        done={routineDone.length > 0 ? (
           <details className="mt-2 text-xs text-ink-soft">
             <summary className="cursor-pointer">오늘 완료 {routineDone.length}건</summary>
             <ul className="mt-1 space-y-1">
@@ -174,16 +212,18 @@ export default async function OpsToday(props: PageProps<"/ads/today">) {
               })}
             </ul>
           </details>
-        )}
-        <details className="mt-3 rounded-xl bg-[#f6f8fc] p-3">
-          <summary className="cursor-pointer text-sm font-semibold text-brand">+ 루틴·약속 추가</summary>
-          <div className="mt-3">
-            <RoutineForm action={addRoutine} staff={manager ? (staffList ?? []) : []} advertisers={advertisers} defaultStaff={me.id} />
-          </div>
-        </details>
-      </Section>
+        ) : null}
+        extra={
+          <details className="mt-3 rounded-xl bg-[#f6f8fc] p-3">
+            <summary className="cursor-pointer text-sm font-semibold text-brand">+ 루틴·약속 추가 <Link href="/ads/routines" className="ml-2 text-xs font-normal underline">관리 화면</Link></summary>
+            <div className="mt-3">
+              <RoutineForm action={addRoutine} staff={manager ? (staffList ?? []) : []} advertisers={advertisers} defaultStaff={me.id} />
+            </div>
+          </details>
+        }
+      />
 
-      <Section title="인입 문의 재연락" count={leadOpen.length} hint="3영업일 넘게 연락이 없거나 연락 예정일이 된 문의. 연락한 뒤 「연락함」을 눌러야 빠집니다" action={<Link href="/leads?follow=1" className="text-xs font-semibold text-brand hover:underline">문의 화면 ›</Link>}>
+      <Section title="인입 문의 재연락" count={leadOpen.length} hint="3영업일 넘게 연락이 없거나 연락 예정일이 된 문의. 연락 방법을 고르고 「연락함」을 눌러야 빠집니다" action={<Link href="/leads?follow=1" className="text-xs font-semibold text-brand hover:underline">문의 화면 ›</Link>}>
         <ul className="divide-y divide-[#edf1f7] text-sm">
           {leadOpen.slice(0, 30).map(({ l, f }) => (
             <li key={l.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
@@ -215,53 +255,21 @@ export default async function OpsToday(props: PageProps<"/ads/today">) {
 
 function Section({ title, count, hint, action, children }: { title: string; count: number; hint: string; action?: ReactNode; children: ReactNode }) {
   return (
-    <section className="glass p-5">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h2 className="font-bold">{title} <span className={`ml-1 rounded-md px-1.5 text-sm tabular-nums ${count ? "bg-[var(--warn-bg)] text-[var(--warn-ink)]" : "bg-[#f1f4f9] text-ink-soft"}`}>{count}</span></h2>
-          <p className="mt-0.5 text-xs text-ink-soft">{hint}</p>
-        </div>
-        {action}
+    <details className="glass group p-0">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 px-5 py-4">
+        <span className="text-[11px] text-ink-soft transition group-open:rotate-90">▶</span>
+        <span className="font-bold">{title}</span>
+        <span className={`rounded-md px-2 py-0.5 text-sm font-bold tabular-nums ${count ? "bg-[var(--warn-bg)] text-[var(--warn-ink)]" : "bg-[var(--ok-bg)] text-[var(--ok-ink)]"}`}>{count ? `${count}곳 남음` : "완료"}</span>
+        <span className="hidden text-xs text-ink-soft sm:inline">{hint}</span>
+        <span className="ml-auto text-xs text-brand group-open:hidden">펼치기</span>
+        <span className="ml-auto hidden text-xs text-ink-soft group-open:inline">접기</span>
+      </summary>
+      <div className="border-t border-[#edf1f7] px-5 pb-4 pt-3">
+        <div className="mb-2 flex justify-end">{action}</div>
+        {children}
       </div>
-      <div className="mt-2">{children}</div>
-    </section>
+    </details>
   );
 }
 
 type Ack = { staff?: { name: string } | null; created_at: string };
-
-function AlertSection({ title, hint, list, ackBy, manager, canAck }: { title: string; hint: string; list: OpsAction[]; ackBy: Map<string, unknown>; manager: boolean; canAck: (a: OpsAction) => boolean }) {
-  const open = list.filter((a) => !ackBy.has(a.key));
-  const done = list.filter((a) => ackBy.has(a.key));
-  return (
-    <Section title={title} count={open.length} hint={hint}>
-      <ul className="divide-y divide-[#edf1f7] text-sm">
-        {open.map((a) => (
-          <li key={a.key} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
-            <div>
-              <p>
-                <span className={`chip ${a.severity === 1 ? "chip-danger" : a.severity === 2 ? "chip-warn" : "chip-info"} mr-2`}>{a.label}</span>
-                <b>{a.advertiserName}</b>{manager && <span className="ml-1 text-xs text-ink-soft">· {a.manager}</span>}
-              </p>
-              <p className="mt-0.5 tabular-nums">{a.title}</p>
-              <p className="text-xs text-ink-soft">{a.detail}</p>
-            </div>
-            {canAck(a) && <form action={ackAlert.bind(null, a.key)}><button className="btn btn-ghost !px-3 !py-1.5 text-xs">확인했어요</button></form>}
-          </li>
-        ))}
-        {!open.length && <li className="py-2 text-ink-soft">{done.length ? "모두 확인했습니다." : "오늘 확인할 것이 없습니다."}</li>}
-      </ul>
-      {!!done.length && (
-        <details className="mt-1 text-xs text-ink-soft">
-          <summary className="cursor-pointer">오늘 확인 {done.length}건</summary>
-          <ul className="mt-1 space-y-1">
-            {done.map((a) => {
-              const k = ackBy.get(a.key) as Ack | undefined;
-              return <li key={a.key}>✓ {a.label} · {a.advertiserName} — {k?.staff?.name ?? ""} {kst(k?.created_at)}</li>;
-            })}
-          </ul>
-        </details>
-      )}
-    </Section>
-  );
-}

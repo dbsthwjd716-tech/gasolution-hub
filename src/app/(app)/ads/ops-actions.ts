@@ -86,3 +86,15 @@ export async function logLeadContact(leadId: string, _p: OpsForm, f: FormData): 
   revalidatePath(`/leads/${leadId}`);
   return { error: "", ok: "기록했습니다." };
 }
+
+// 루틴·약속 여러 건 한꺼번에 완료 (값: 루틴id|해야 하는 날짜)
+export async function completeRoutines(formData: FormData) {
+  const { supabase } = await getMe();
+  const rows = [...new Set(formData.getAll("key").map(String))]
+    .map((k) => k.split("|"))
+    .filter(([id, d]) => id && /^\d{4}-\d{2}-\d{2}$/.test(d ?? ""))
+    .slice(0, 300)
+    .map(([routine_id, due_date]) => ({ routine_id, due_date }));
+  if (rows.length) await supabase.from("ops_routine_checks").upsert(rows, { onConflict: "routine_id,due_date", ignoreDuplicates: true });
+  touch();
+}
