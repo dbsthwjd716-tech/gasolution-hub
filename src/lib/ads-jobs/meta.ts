@@ -39,7 +39,10 @@ export async function runMetaSync(token: string, range: { from?: string; to?: st
 
   let ok = 0, failed = 0, rowsUpserted = 0;
   const results: { account: string; name: string; ok: boolean; rows?: number; message?: string }[] = [];
+  const deadline = Date.now() + 240_000; // 서버 실행 한도(300초) 전에 멈추고 남은 계정은 기록
+  let skipped = 0;
   for (const a of accounts) {
+    if (Date.now() > deadline) { skipped++; continue; }
     const ext = actId(a.external_account_id);
     if (!ext) { failed++; results.push({ account: a.external_account_id, name: a.account_name, ok: false, message: "Meta 광고계정 ID 형식 오류" }); continue; }
     const own = perAccount.get(ext);
@@ -73,7 +76,7 @@ export async function runMetaSync(token: string, range: { from?: string; to?: st
       results.push({ account: ext, name: a.account_name, ok: false, message: (e instanceof Error ? e.message : String(e)).slice(0, 200) });
     }
   }
-  const summary = { from, to, graphVersion: version, requestedAccounts: accounts.length, successfulAccounts: ok, failedAccounts: failed, rowsUpserted, results };
+  const summary = { from, to, graphVersion: version, requestedAccounts: accounts.length, successfulAccounts: ok, failedAccounts: failed, skippedForTime: skipped, rowsUpserted, results };
   if (failed && !ok) throw Object.assign(new Error(`메타 계정 ${failed}개 모두 실패: ${results[0]?.message ?? ""}`), { summary });
   return summary;
 }

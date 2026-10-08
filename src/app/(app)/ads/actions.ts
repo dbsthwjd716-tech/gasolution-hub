@@ -59,9 +59,14 @@ export async function refreshBizmoney(_p: RefreshState, _f: FormData): Promise<R
   const { legacyAdsMode } = await import("@/lib/ads-legacy");
   if (!legacyAdsMode()) {
     // 통합 시스템 수집기를 바로 실행 → 끝날 때까지 실행 기록을 확인 (보통 10~30초)
-    const started = new Date(Date.now() - 2000).toISOString();
-    const { error } = await supabase.rpc("ads_run_job_with", { p_job: "bizmoney-snapshot", p_body: { force: true } });
+    let started = new Date(Date.now() - 2000).toISOString();
+    const { data: rid, error } = await supabase.rpc("ads_run_job_with", { p_job: "bizmoney-snapshot", p_body: { force: true } });
     if (error) return { error: `새로고침하지 못했습니다: ${error.message}` };
+    if (rid == null) {
+      // 90초 안에 누가 이미 눌렀음 → 새로 돌리지 않고 그 실행이 끝나길 기다림
+      const { data: req } = await supabase.from("ads_job_requests").select("requested_at").eq("job", "bizmoney-snapshot").maybeSingle();
+      if (req?.requested_at) started = new Date(new Date(req.requested_at).getTime() - 2000).toISOString();
+    }
     for (let i = 0; i < 80; i++) {
       await new Promise((r) => setTimeout(r, 3000));
       const { data } = await supabase.from("ads_sync_runs").select("ok,summary").eq("job", "hub:bizmoney-snapshot").gte("started_at", started).order("started_at", { ascending: false }).limit(1);

@@ -14,6 +14,7 @@ export default async function StaffPage() {
   const { data } = await supabase.from("staff").select("id,name,email,role,can_view_cost,is_active,auth_user_id,staff_hr(join_date)").order("is_active", { ascending: false }).order("name");
   const rows = (data ?? []) as Row[];
   const { data: docRows } = await supabase.from("staff_documents").select("staff_id,kind");
+  const { data: ceoSignedIn } = await supabase.rpc("ceo_has_signed_in");
   const docsOf = (id: string) => (docRows ?? []).filter((d) => d.staff_id === id).map((d) => d.kind as string);
   const DocsCell = ({ r }: { r: Row }) => {
     const k = docsOf(r.id);
@@ -64,7 +65,7 @@ export default async function StaffPage() {
                     <LoginCell
                       hasLogin={!!r.auth_user_id}
                       canCreate={canTouch(r) || ceoFirst(r)}
-                      canReset={(canTouch(r) || (r.role === "ceo" && me.role === "lead")) && r.id !== me.id}
+                      canReset={(canTouch(r) || (r.role === "ceo" && me.role === "lead" && !ceoSignedIn)) && r.id !== me.id}
                       create={createLogin.bind(null, r.id)}
                       reset={resetPassword.bind(null, r.id)}
                       name={r.name}

@@ -51,7 +51,7 @@ export async function saveMonth(input: MonthInput, isNew: boolean): Promise<Save
     const rows = members.map((m, i) => ({
       month, name: m.name, staff_id: sid.get(m.name) ?? null,
       target: money(m.target), target_kind: m.target == null ? null : (m.targetKind ?? "manual"),
-      actual: money(m.actual), in_team: !!m.inTeam, team_amount: money(m.teamAmount),
+      actual: money(m.actual), in_team: !m.leader && !!m.inTeam, team_amount: money(m.teamAmount),
       is_leader: !!m.leader, excluded: !!m.excluded, note: m.note?.trim() || null, sort_order: i,
     }));
     const { error: me2 } = await supabase.from("monthly_promo_members").upsert(rows, { onConflict: "month,name" });

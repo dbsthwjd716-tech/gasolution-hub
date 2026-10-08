@@ -3,7 +3,8 @@ import type { ReactNode } from "react";
 import { getMe } from "@/lib/supabase/server";
 import { todayKST } from "@/lib/billing-calc";
 import { jobState, opsActions, roasActions, type JobState, type OpsAction } from "@/lib/ads";
-import { fetchBizmoney, fetchOpsStatus, fetchRoasWatch } from "@/lib/ads-legacy";
+import { fetchBizmoney, fetchOpsStatus, fetchRoasWatch, legacyAdsMode } from "@/lib/ads-legacy";
+import { ADS_WRITES_LOCAL } from "@/lib/ads-mode";
 import { followUp } from "@/lib/leads";
 import { loadOpenLeads } from "@/lib/leads-data";
 import { cycleLabel, dueToday, type Routine } from "@/lib/routines";
@@ -85,11 +86,16 @@ export default async function OpsToday(props: PageProps<"/ads/today">) {
   const now = new Date(nowMs + 9 * 3600000);
   const hour = now.getUTCHours() + now.getUTCMinutes() / 60;
   const s = st.data;
+  const legacy = legacyAdsMode(); // 예전 대시보드를 읽을 때는 예전 작업 이름
   const status: { name: string; state: JobState["state"] | "off"; label: string }[] = s
     ? [
-        { name: "비즈머니 아침 확인", ...jobState(s.runs, "bizmoney-snapshot", 10, hour), ...(biz.data?.snapshot_date !== today ? { state: "error" as const, label: `최근 기록 ${biz.data?.snapshot_date ?? "없음"}` } : {}) },
-        { name: "검색광고 실적 수집", ...jobState(s.runs, "searchad-daily", 12.5, hour) },
-        { name: "기준 표 맞추기", ...jobState(s.runs, "sync-ref", 9, hour) },
+        { name: "비즈머니 아침 확인", ...jobState(s.runs, "bizmoney-snapshot", legacy ? 10.5 : 10, hour), ...(biz.data?.snapshot_date !== today ? { state: "error" as const, label: `최근 기록 ${biz.data?.snapshot_date ?? "없음"}` } : {}) },
+        ...(legacy
+          ? [{ name: "아침 자동 수집", ...jobState(s.runs, "daily-sync", 11, hour) }]
+          : [
+              { name: "검색광고 실적 수집", ...jobState(s.runs, "searchad-daily", 12.5, hour) },
+              ...(ADS_WRITES_LOCAL ? [] : [{ name: "기준 표 맞추기", ...jobState(s.runs, "sync-ref", 9, hour) }]),
+            ]),
         { name: "검색광고 어제 실적", state: s.searchad_targets > 0 && s.searchad_done >= s.searchad_targets ? "ok" : hour < 13.5 ? "pending" : "error", label: `${s.searchad_done}/${s.searchad_targets}곳` },
         { name: "메타 광고비", state: !s.meta_accounts.length ? "off" : s.meta_accounts.some((a) => !a.last_synced_at || nowMs - Date.parse(a.last_synced_at) > 26 * 3600000) ? "error" : "ok", label: `${s.meta_accounts.length}개 계정` },
       ]

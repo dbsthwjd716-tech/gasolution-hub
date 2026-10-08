@@ -106,5 +106,11 @@ export async function loadPayrollMonth(supabase: SupabaseClient, ym: string) {
   });
   const order = { lead: 0, sales_ae: 1, nonsales_ae: 2 } as const;
   rows.sort((a, b) => (a.profile ? order[a.profile.track] : 9) - (b.profile ? order[b.profile.track] : 9) || a.name.localeCompare(b.name));
+  // 마감된 달은 마감 때 보관한 팀 수당 기준·달성 여부를 보여줌 (나중에 설정이 바뀌어도 마감 금액과 맞게)
+  if (closed) {
+    const leadSnap = rows.find((r) => r.profile?.track === "lead")?.auto;
+    if (leadSnap) team.teamNaver = num(leadSnap.team_naver);
+    if (rows.length && num(month?.team_bonus) > 0) team.achieved = rows.some((r) => num(r.auto.team_bonus) > 0);
+  }
   return { month, tiers, profiles, rows, team };
 }
