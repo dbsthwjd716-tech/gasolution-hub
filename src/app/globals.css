@@ -122,3 +122,7 @@ body {
   background: #eef1f6;
   color: var(--ink-soft);
 }
+.chip-danger {
+  background: #fde8e8;
+  color: var(--color-danger, #c0262d);
+}

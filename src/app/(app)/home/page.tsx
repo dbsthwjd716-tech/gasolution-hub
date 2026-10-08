@@ -4,6 +4,8 @@ import { followUp } from "@/lib/leads";
 import { loadOpenLeads } from "@/lib/leads-data";
 import { canViewCost, getMe } from "@/lib/supabase/server";
 import { kstTime } from "@/lib/attendance";
+import { opsActions } from "@/lib/ads";
+import { fetchBizmoney } from "@/lib/ads-legacy";
 
 const won = (n: number) => Math.round(n).toLocaleString("ko-KR");
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
@@ -38,7 +40,7 @@ export default async function Home() {
   const to = nextMonth(ym);
 
   const settle = supabase.from("billing_documents").select("id,doc_type,status,total_amount,payment_received,staff_id,recipient_company_name,document_date");
-  const [open, { data: docs }, { data: contracts }, { data: viral }, { data: unpaidViral }, stmts, { data: att }, attWait] = await Promise.all([
+  const [open, { data: docs }, { data: contracts }, { data: viral }, { data: unpaidViral }, stmts, { data: att }, attWait, biz, { data: adsAcks }] = await Promise.all([
     loadOpenLeads(supabase),
     isManager ? settle.in("status", ["requested", "lead_approved", "approved", "issued", "rejected"]).limit(1000) : settle.eq("staff_id", me.id).in("status", ["draft", "rejected", "approved", "issued"]).limit(1000),
     supabase.from("contracts").select("id,status,staff_id,client:clients(company_name)").in("status", ["draft", "signing", "rejected"]).limit(500),
@@ -55,7 +57,15 @@ export default async function Home() {
           supabase.from("attendance_correction_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
         ]).then((r) => r.reduce((t, x) => t + (x.count ?? 0), 0))
       : Promise.resolve(0),
+    fetchBizmoney(),
+    supabase.from("ads_alert_acks").select("alert_key").eq("ack_date", today),
   ]);
+
+  // 광고 운영: 오늘 조치할 알림 (직원은 본인 담당)
+  const bizRows = (biz.data?.rows ?? []).filter((r) => isManager || r.manager === me.name);
+  const acked = new Set((adsAcks ?? []).map((a) => a.alert_key));
+  const adsOpen = biz.data?.snapshot_date ? opsActions(bizRows, biz.data.previous, biz.data.snapshot_date, biz.data.previous_date, today).filter((a) => !acked.has(a.key)) : [];
+  const adsDanger = adsOpen.filter((a) => a.type === "bizmoney_danger").length;
 
   // 연락이 필요한 문의 (직원은 본인 담당 + 미배정, 대표·팀장은 전체)
   const leads = open.filter((l) => (isManager ? true : l.staff_id === me.id || !l.staff_id)).map((l) => ({ l, f: followUp(l, today) }));
@@ -93,6 +103,22 @@ export default async function Home() {
         <p className="text-sm text-ink-soft">{day}</p>
         <h1 className="text-2xl font-bold">{me.name}님, 오늘 할 일</h1>
       </header>
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-bold text-ink-soft">광고 운영</h2>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Todo href="/ads/today" label={isManager ? "지금 조치할 것 (전체)" : "지금 조치할 내 광고주"} count={adsOpen.length} sub={adsDanger ? `비즈머니 위험 ${adsDanger}건` : "비즈머니·소진 변화 알림"} tone={adsDanger ? "danger" : "warn"} />
+          <Link href="/ads" className="glass block p-4 transition hover:-translate-y-0.5">
+            <p className="text-xs text-ink-soft">{isManager ? "이번 달 네이버 소진 (VAT 별도)" : "이번 달 내 네이버 소진 (VAT 별도)"}</p>
+            <p className="mt-1 text-2xl font-bold tabular-nums">{won(bizRows.reduce((t, r) => t + (r.source === "transferred" ? Number(r.gross_total_cost ?? 0) : Number(r.gross_total_cost ?? 0) / 1.1), 0))}원</p>
+            <p className="mt-0.5 text-xs text-ink-soft">{biz.data?.snapshot_date ? `${md(biz.data.snapshot_date)} 아침 기준` : biz.error ?? ""}</p>
+          </Link>
+          <Link href="/ads/spend" className="glass block p-4 transition hover:-translate-y-0.5">
+            <p className="text-xs text-ink-soft">광고비 실적</p>
+            <p className="mt-1 text-sm font-semibold">그룹별 검색광고·GFA·메타 보기 →</p>
+          </Link>
+        </div>
+      </section>
 
       <section className="space-y-2">
         <h2 className="text-sm font-bold text-ink-soft">근태</h2>

@@ -61,10 +61,11 @@ export function ClientPicker({ id, name, clients, value, onChange, required, dis
             autoComplete="off"
             role="combobox"
             aria-expanded={open}
+            aria-controls={`${name}-options`}
             aria-label="거래처 검색"
           />
           {open && (
-            <ul className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-[var(--glass-border)] bg-white shadow-lg" role="listbox">
+            <ul className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-[var(--glass-border)] bg-white shadow-lg" role="listbox" id={`${name}-options`}>
               {matches.map((c) => (
                 <li key={c.id}>
                   <button
