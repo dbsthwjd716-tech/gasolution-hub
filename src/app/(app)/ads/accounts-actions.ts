@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getMe } from "@/lib/supabase/server";
+import { ADS_WRITES_LOCAL } from "@/lib/ads-mode";
 import { createAccount, importTransferred, updateAccount } from "@/lib/legacy-accounts";
 import { parseTransferredCsv } from "@/lib/transferred-csv";
 
@@ -18,6 +19,7 @@ const touch = async () => {
   revalidatePath("/ads/accounts");
   revalidatePath("/ads");
   revalidatePath("/ads/spend");
+  if (ADS_WRITES_LOCAL) return; // 전환 후에는 통합 DB에 바로 저장되므로 맞출 필요 없음
   const { supabase } = await getMe();
   await supabase.rpc("ads_run_job", { p_job: "sync-ref" });
 };

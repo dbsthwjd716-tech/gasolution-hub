@@ -1,4 +1,5 @@
 import "server-only";
+import { ADS_WRITES_LOCAL } from "./ads-mode";
 
 // 광고주 API 연동 (네이버 검색광고 라이선스·비밀키 / Meta 토큰)
 //   비밀값은 예전 대시보드 서버가 실제로 접속 확인 후 암호화해 저장 (암호화 키는 그쪽에만 있음, 허브는 보관하지 않음)
@@ -26,8 +27,12 @@ async function call<T>(method: "GET" | "POST", body?: Record<string, unknown>): 
   }
 }
 
-export const fetchCredentials = () => call<{ advertisers: CredRow[] }>("GET");
-export const saveCredential = (b: Record<string, unknown>) => call<{ message: string; warning?: string | null }>("POST", b);
+// 전환 후(ADS_WRITES_LOCAL)에는 통합 DB·금고로
+export const fetchCredentials = async () =>
+  ADS_WRITES_LOCAL ? (await import("./local-credentials")).localFetchCredentials() : call<{ advertisers: CredRow[] }>("GET");
+export const saveCredential = async (b: Record<string, unknown>) =>
+  ADS_WRITES_LOCAL ? (await import("./local-credentials")).localSaveCredential(b) : call<{ message: string; warning?: string | null }>("POST", b);
 
 export type Revealed = { accountId: string; apiKey: string; secret: string };
-export const revealCredential = (advertiserId: number, platform: string) => call<Revealed>("POST", { action: "reveal", advertiserId, platform });
+export const revealCredential = async (advertiserId: number, platform: string) =>
+  ADS_WRITES_LOCAL ? (await import("./local-credentials")).localRevealCredential(advertiserId, platform) : call<Revealed>("POST", { action: "reveal", advertiserId, platform });

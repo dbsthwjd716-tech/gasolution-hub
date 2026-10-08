@@ -19,6 +19,7 @@ const suites = [
   ['월간 프로모션', './monthly-promo.test.mjs'],
   ['직원 서류함', './staff-docs.test.mjs'],
   ['광고 화면 통합 DB 읽기', './ads-local.test.mjs'],
+  ['광고주 등록·API 통합 DB 저장', './ads-writes.test.mjs'],
   ['바이럴 새 건', './viral-create.test.mjs'],
 ];
 let failed = 0;
