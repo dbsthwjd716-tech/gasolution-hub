@@ -8,10 +8,11 @@ async function call<T>(kind: string, start: string | null, end: string | null): 
   const token = process.env.DASHBOARD_HUB_TOKEN;
   if (!url || !key || !token) return { error: "예전 대시보드 연결 설정이 없습니다 (Vercel 환경변수)." };
   try {
-    const res = await fetch(`${url}/rest/v1/rpc/hub_ads_export`, {
+    const promo = kind === "promo";
+    const res = await fetch(`${url}/rest/v1/rpc/${promo ? "hub_promo_spend" : "hub_ads_export"}`, {
       method: "POST",
       headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ p_kind: kind, p_start: start, p_end: end, p_token: token }),
+      body: JSON.stringify(promo ? { p_start: start, p_end: end, p_token: token } : { p_kind: kind, p_start: start, p_end: end, p_token: token }),
       next: { revalidate: 300 }, // 아침에 한 번 바뀌는 데이터라 5분 동안은 다시 묻지 않음
     });
     if (!res.ok) return { error: `예전 대시보드에서 읽지 못했습니다 (${res.status}).` };
@@ -39,3 +40,7 @@ export const fetchGroupSpend = (start: string, end: string) => call<{ rows: Grou
 
 export type MetaSpendRow = { stat_date: string; employee_name: string; external_account_id: string; account_name: string; advertiser_name: string | null; spend: number };
 export const fetchMetaSpend = (start: string, end: string) => call<{ rows: MetaSpendRow[] }>("meta_spend", start, end);
+
+// 주간 일소진 프로모션: 날짜·담당자별 네이버 유상실적(VAT 별도)과 메타 광고비
+export type { PromoSpend } from "./promo";
+export const fetchPromoSpend = (start: string, end: string) => call<import("./promo").PromoSpend>("promo", start, end);

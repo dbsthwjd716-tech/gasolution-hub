@@ -40,7 +40,7 @@ const GROUPS: Group[] = [
       { href: "/billing", label: "정산서 · 견적서" },
     ],
   },
-  { key: "promo", label: "프로모션", icon: "gift", items: [{ href: "/promotions", label: "프로모션 확인", soon: true }] },
+  { key: "promo", label: "프로모션", icon: "gift", items: [{ href: "/promotions", label: "주간 일소진 프로모션" }] },
   { key: "attend", label: "근태 · 연차", icon: "clock", items: [{ href: "/attendance", label: "내 근태" }, { href: "/attendance/calendar", label: "근태 달력" }] },
   { key: "pay", label: "급여 · 인센티브", icon: "won", managerOnly: true, items: [{ href: "/payroll", label: "급여 · 인센티브" }] },
 ];
