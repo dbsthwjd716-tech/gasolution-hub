@@ -16,6 +16,7 @@ const suites = [
   ['직원 관리', './staff-manage.test.mjs'],
   ['루틴·약속', './routines.test.mjs'],
   ['광고 수집 이전', './ads-import.test.mjs'],
+  ['바이럴 새 건', './viral-create.test.mjs'],
 ];
 let failed = 0;
 for (const [name, file] of suites) {

@@ -49,7 +49,7 @@ export async function addRoutine(_p: OpsForm, f: FormData): Promise<OpsForm> {
 
 export async function checkRoutine(id: string, date: string) {
   const { supabase } = await getMe();
-  await supabase.from("ops_routine_checks").upsert({ routine_id: id, due_date: date });
+  await supabase.from("ops_routine_checks").upsert({ routine_id: id, due_date: date }, { onConflict: "routine_id,due_date", ignoreDuplicates: true });
   touch();
 }
 

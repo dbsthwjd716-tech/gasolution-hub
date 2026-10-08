@@ -190,12 +190,20 @@ export async function saveBilling(id: string | null, _p: FormState, f: FormData)
     if (!data?.length) return { error: "이 문서를 수정할 권한이 없습니다." };
   }
 
-  const { error: delErr } = await supabase.from("billing_items").delete().eq("billing_document_id", docId!);
-  if (delErr) return { error: friendly(delErr.message) };
+  // 품목 바꾸기: 새 품목을 먼저 넣고, 성공하면 예전 품목을 지움 (중간에 실패해도 품목이 비지 않음)
+  const { data: oldItems } = await supabase.from("billing_items").select("id").eq("billing_document_id", docId!);
   const { error: itemErr } = await supabase
     .from("billing_items")
     .insert(items.map((it, i) => ({ ...it, billing_document_id: docId, sort_order: i + 1 })));
-  if (itemErr) return { error: friendly(itemErr.message) };
+  if (itemErr) {
+    // 새로 만든 문서에서 품목이 실패하면 빈 문서를 남기지 않음 (다시 눌러도 중복 문서가 생기지 않게)
+    if (!id) await supabase.from("billing_documents").delete().eq("id", docId!);
+    return { error: friendly(itemErr.message) };
+  }
+  if (oldItems?.length) {
+    const { error: delErr } = await supabase.from("billing_items").delete().in("id", oldItems.map((x) => x.id));
+    if (delErr) return { error: friendly(delErr.message) };
+  }
   if (files.length) {
     const { error: fileErr } = await supabase.from("billing_files").insert(
       files.map((x) => ({ billing_document_id: docId, file_type: "spend_evidence", file_name: x.name, storage_path: x.path, mime_type: x.type, file_size: x.size })),

@@ -108,22 +108,30 @@ function orderFields(f: FormData) {
 export async function createViralOrder(_p: FormState, f: FormData): Promise<FormState> {
   const parsed = orderFields(f);
   if ("error" in parsed) return { error: parsed.error ?? "" };
-  const supabase = await createClient();
-  const { data, error } = await supabase.from("viral_orders").insert(parsed.row).select("id").single();
+  const { supabase, me } = await getMe();
+  if (!me) return { error: "로그인이 필요합니다." };
+  // 담당자·파생 실적자 지정은 대표·팀장만 (직원은 본인 담당으로 자동)
+  if (me.role === "staff") {
+    delete parsed.row.staff_id;
+    delete parsed.row.derived_staff_id;
+  }
+  // 건과 상품 줄을 한 번에 저장 (상품 줄이 실패하면 건도 남지 않음)
+  const items = parsed.items.map(({ id: _drop, ...i }) => { void _drop; return i; });
+  const { data: newId, error } = await supabase.rpc("viral_create_order", { p_order: parsed.row, p_items: items });
   if (error) return { error: friendly(error.message) };
-  const { error: itemErr } = await supabase
-    .from("viral_order_items")
-    // 새 줄에는 id 칸 자체를 빼야 함 (여러 줄을 한 번에 넣을 때 빈 id 칸이 있으면 자동 번호 대신 빈 값이 들어가 저장 실패)
-    .insert(parsed.items.map(({ id: _drop, ...i }) => { void _drop; return { ...i, order_id: data.id }; }));
-  if (itemErr) return { error: friendly(itemErr.message) };
   revalidatePath("/viral");
-  redirect(`/viral/${data.id}`);
+  redirect(`/viral/${newId}`);
 }
 
 export async function updateViralOrder(id: string, _p: FormState, f: FormData): Promise<FormState> {
   const parsed = orderFields(f);
   if ("error" in parsed) return { error: parsed.error ?? "" };
-  const supabase = await createClient();
+  const { supabase, me } = await getMe();
+  if (!me) return { error: "로그인이 필요합니다." };
+  if (me.role === "staff") {
+    delete parsed.row.staff_id;
+    delete parsed.row.derived_staff_id;
+  }
   const { data, error } = await supabase.from("viral_orders").update(parsed.row).eq("id", id).select("id");
   if (error) return { error: friendly(error.message) };
   if (!data?.length) return { error: "이 건을 수정할 권한이 없습니다. 담당자나 팀장에게 요청해 주세요." };
@@ -300,8 +308,10 @@ export async function runViralImport(): Promise<ImportResult> {
   const orderIdForKey = new Map<string, string>();
   for (let i = 0; i < orderRows.length; i += 200) {
     const chunk = orderRows.slice(i, i + 200);
-    const { data, error } = await supabase.from("viral_orders").upsert(chunk, { onConflict: "import_key" }).select("id,import_key");
+    // 이미 가져온 건은 건드리지 않음 (통합 시스템에서 바꾼 입금·계산서·담당 상태를 시트 값으로 덮어쓰지 않게) → 새 건만 추가
+    const { error } = await supabase.from("viral_orders").upsert(chunk, { onConflict: "import_key", ignoreDuplicates: true });
     if (error) return { error: `바이럴 건 저장 중 문제가 생겼습니다(${i + 1}번째 묶음부터): ${error.message}` };
+    const { data } = await supabase.from("viral_orders").select("id,import_key").in("import_key", chunk.map((r) => r.import_key));
     for (const r of data ?? []) orderIdForKey.set(r.import_key, r.id);
   }
 
@@ -321,12 +331,12 @@ export async function runViralImport(): Promise<ImportResult> {
   let saved = 0;
   for (let i = 0; i < itemRows.length; i += 200) {
     const chunk = itemRows.slice(i, i + 200);
-    const { error } = await supabase.from("viral_order_items").upsert(chunk, { onConflict: "source_sheet,source_row" });
+    const { error } = await supabase.from("viral_order_items").upsert(chunk, { onConflict: "source_sheet,source_row", ignoreDuplicates: true });
     if (error) {
       // 묶음이 거절되면 한 줄씩 다시 넣어서, 어느 시트 몇 행이 문제인지 찾아 알려줌
       const failed: string[] = [];
       for (const r of chunk) {
-        const one = await supabase.from("viral_order_items").upsert(r, { onConflict: "source_sheet,source_row" });
+        const one = await supabase.from("viral_order_items").upsert(r, { onConflict: "source_sheet,source_row", ignoreDuplicates: true });
         if (one.error) failed.push(`${r.source_sheet} ${r.source_row}행 (${one.error.message})`);
         else saved++;
       }
@@ -445,8 +455,16 @@ export async function createEstimateFromOrder(orderId: string) {
     .select("id")
     .single();
   if (error || !doc) redirect(`/viral/${orderId}?estimate_error=1`);
-  if (lines.length) await supabase.from("billing_items").insert(lines.map((l) => ({ ...l, billing_document_id: doc.id })));
-  await supabase.from("viral_orders").update({ billing_document_id: doc.id }).eq("id", orderId);
+  if (lines.length) {
+    const { error: itemErr } = await supabase.from("billing_items").insert(lines.map((l) => ({ ...l, billing_document_id: doc.id })));
+    if (itemErr) {
+      // 품목이 안 들어간 빈 견적서는 남기지 않음 (작성 중 문서라 본인이 지울 수 있음)
+      await supabase.from("billing_documents").delete().eq("id", doc.id).eq("status", "draft");
+      redirect(`/viral/${orderId}?estimate_error=1`);
+    }
+  }
+  const { error: linkErr } = await supabase.from("viral_orders").update({ billing_document_id: doc.id }).eq("id", orderId);
+  if (linkErr) redirect(`/billing/${doc.id}?link_error=1`);
   revalidatePath(`/viral/${orderId}`);
   redirect(`/billing/${doc.id}`);
 }
