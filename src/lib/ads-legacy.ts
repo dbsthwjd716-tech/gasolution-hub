@@ -8,11 +8,14 @@ async function call<T>(kind: string, start: string | null, end: string | null): 
   const token = process.env.DASHBOARD_HUB_TOKEN;
   if (!url || !key || !token) return { error: "예전 대시보드 연결 설정이 없습니다 (Vercel 환경변수)." };
   try {
-    const promo = kind === "promo";
-    const res = await fetch(`${url}/rest/v1/rpc/${promo ? "hub_promo_spend" : "hub_ads_export"}`, {
+    const [fn, body] =
+      kind === "promo" ? ["hub_promo_spend", { p_start: start, p_end: end, p_token: token }]
+      : kind === "naver_split" ? ["hub_naver_split", { p_token: token }]
+      : ["hub_ads_export", { p_kind: kind, p_start: start, p_end: end, p_token: token }];
+    const res = await fetch(`${url}/rest/v1/rpc/${fn}`, {
       method: "POST",
       headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify(promo ? { p_start: start, p_end: end, p_token: token } : { p_kind: kind, p_start: start, p_end: end, p_token: token }),
+      body: JSON.stringify(body),
       next: { revalidate: 300 }, // 아침에 한 번 바뀌는 데이터라 5분 동안은 다시 묻지 않음
     });
     if (!res.ok) return { error: `예전 대시보드에서 읽지 못했습니다 (${res.status}).` };
@@ -44,3 +47,11 @@ export const fetchMetaSpend = (start: string, end: string) => call<{ rows: MetaS
 // 주간 일소진 프로모션: 날짜·담당자별 네이버 유상실적(VAT 별도)과 메타 광고비
 export type { PromoSpend } from "./promo";
 export const fetchPromoSpend = (start: string, end: string) => call<import("./promo").PromoSpend>("promo", start, end);
+
+// 광고주별 이번 달 비즈머니 소진 (검색광고 + GFA 합산). 검색광고 기록이 없는 광고주 = GFA 전용(성과형) 계정
+export type NaverSplitRow = {
+  customer_id: string; advertiser_name: string | null; manager: string | null; client_group: string | null; gfa_ad_account_no: number | null;
+  period_start: string; period_end: string; month_cost: number; searchad_cost: number; gfa_only: boolean;
+};
+export type NaverSplit = { snapshot_date: string | null; searchad_from: string | null; searchad_through: string | null; gfa_collected_through: string | null; rows: NaverSplitRow[] };
+export const fetchNaverSplit = () => call<NaverSplit>("naver_split", null, null);

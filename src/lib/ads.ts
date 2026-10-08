@@ -174,3 +174,21 @@ export function jobState(runs: Run[], job: string, dueHour: number, hourKst: num
   if (!ok && hourKst < dueHour) return { state: "pending", label: "2차 실행 대기", at: latest.finished_at };
   return { state: ok ? "ok" : "error", label: ok ? "정상" : "실패", at: latest.finished_at };
 }
+
+// ------------------------------------------------------------------ 비즈머니 현황 정렬 (기본: 이번 달 소진 많은 순)
+export type SortKey = "cost" | "bizmoney" | "daily";
+export type SortDir = "asc" | "desc";
+export const SORT_KEYS: SortKey[] = ["cost", "bizmoney", "daily"];
+
+export function sortBy(rows: BizRow[], key: SortKey, dir: SortDir) {
+  // 피이관은 비즈머니가 없으므로 비즈머니 정렬에서는 늘 맨 뒤
+  const val = (r: BizRow): number | null =>
+    key === "cost" ? netCost(r) : key === "daily" ? netDaily(r) : r.source === "transferred" || r.bizmoney == null ? null : n(r.bizmoney);
+  const sign = dir === "asc" ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const x = val(a);
+    const y = val(b);
+    if (x == null || y == null) return x == null && y == null ? 0 : x == null ? 1 : -1;
+    return sign * (x - y) || netCost(b) - netCost(a) || String(a.advertiser_name ?? "").localeCompare(String(b.advertiser_name ?? ""), "ko");
+  });
+}

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { changePct, hiddenReason, jobState, netCost, opsActions, sortRows, summarize, type BizRow } from "./ads.ts";
+import { changePct, hiddenReason, jobState, netCost, opsActions, sortBy, sortRows, summarize, type BizRow } from "./ads.ts";
 
 const row = (o: Partial<BizRow>): BizRow => ({
   customer_id: "1", advertiser_name: "가", manager: "김직원", source: "naver_api", key_source: "group", bizmoney: 1000000,
@@ -54,4 +54,15 @@ test("자동 작업 상태", () => {
   assert.equal(jobState([], "x", 10.5, 9).state, "pending");
   assert.equal(jobState([], "x", 10.5, 11).state, "error");
   assert.equal(jobState([{ job: "x", started_at: "", finished_at: "t", ok: true }], "x", 10.5, 11).state, "ok");
+});
+
+test("비즈머니 현황 정렬: 기본 소진 많은 순, 비즈머니·일평균 오름/내림, 피이관은 비즈머니 정렬에서 맨 뒤", () => {
+  const mk = (id: string, cost: number, biz: number | null, daily: number, source = "naver_api") =>
+    ({ customer_id: id, advertiser_name: id, source, gross_total_cost: cost, bizmoney: biz, gross_daily_average: daily, status: "normal" }) as never;
+  const rows = [mk("a", 110, 500, 11), mk("b", 330, 100, 33), mk("c", 220, null, 5, "transferred")];
+  assert.deepEqual(sortBy(rows, "cost", "desc").map((r) => r.customer_id), ["b", "c", "a"]);
+  assert.deepEqual(sortBy(rows, "cost", "asc").map((r) => r.customer_id), ["a", "c", "b"]);
+  assert.deepEqual(sortBy(rows, "bizmoney", "asc").map((r) => r.customer_id), ["b", "a", "c"]);
+  assert.deepEqual(sortBy(rows, "bizmoney", "desc").map((r) => r.customer_id), ["a", "b", "c"]);
+  assert.deepEqual(sortBy(rows, "daily", "desc").map((r) => r.customer_id), ["b", "a", "c"]);
 });
