@@ -110,23 +110,27 @@ export function calcPay(p: Profile, i: Inputs, a: Auto, tiers: Tier[], extras: E
   return { spend, lines, total };
 }
 
-// 팀원 한 명의 총 광고 취급고 (팀장 팀 수당·팀 목표 기준)
-//   본인 네이버(인계 계정 소진 제외) + 네이버 외 매체(메타 등) + 바이럴을 마감에 넣는 사람(비영업 AE)만 바이럴
-//   예: 서진원 = 네이버(인계건 미포함) + 메타 / 박규진 = 네이버 + 메타 + 바이럴 / 박영서(매니저) = 네이버 + 메타
+// 9월 마감 엑셀(담당자별_결과)과 같은 기준
+// 팀장 팀 수당 0.1% 기준: 팀원 한 명의 총 광고 취급고
+//   서진원(영업 AE) = 네이버(인계건 미포함) + 메타 / 박규진(비영업 AE) = 네이버 + 메타 + 바이럴 / 박영서(매니저) = 네이버
+//   = 본인 네이버 + (영업 AE이거나 메타를 마감에 넣는 사람만 메타) + (바이럴을 마감에 넣는 사람만 바이럴)
 export function teamSpendOf(p: Profile, i: Inputs, viralSales: number) {
-  return i.naver_spend + i.other_spend + (p.viral_in_spend ? viralSales : 0);
+  return i.naver_spend + (p.track === "sales_ae" || p.other_in_spend ? i.other_spend : 0) + (p.viral_in_spend ? viralSales : 0);
+}
+
+// 팀 목표(1인 팀 인센티브) 달성 판정 기준: 팀원 모두 네이버(인계건 미포함) + 메타, 바이럴 제외
+export function teamGoalSpendOf(i: Inputs) {
+  return i.naver_spend + i.other_spend;
 }
 
 // 그 달 팀 전체 계산에 필요한 값: 팀 수당·매니저 0.2%·팀 목표
 export function teamAuto(rows: { profile: Profile; inputs: Inputs; viral_sales?: number }[], teamGoal: number, teamBonus: number) {
   const lead = rows.find((r) => r.profile.track === "lead");
-  const teamNaver = rows.filter((r) => r.profile.track !== "lead").reduce((t, r) => t + teamSpendOf(r.profile, r.inputs, r.viral_sales ?? 0), 0);
-  return {
-    teamNaver,
-    leadOther: lead?.inputs.other_spend ?? 0,
-    achieved: teamGoal > 0 && teamNaver >= teamGoal,
-    bonus: teamGoal > 0 && teamNaver >= teamGoal ? teamBonus : 0,
-  };
+  const members = rows.filter((r) => r.profile.track !== "lead");
+  const teamNaver = members.reduce((t, r) => t + teamSpendOf(r.profile, r.inputs, r.viral_sales ?? 0), 0);
+  const goalSpend = members.reduce((t, r) => t + teamGoalSpendOf(r.inputs), 0);
+  const achieved = teamGoal > 0 && goalSpend >= teamGoal;
+  return { teamNaver, goalSpend, leadOther: lead?.inputs.other_spend ?? 0, achieved, bonus: achieved ? teamBonus : 0 };
 }
 
 export function readInputs(v: unknown): Inputs {

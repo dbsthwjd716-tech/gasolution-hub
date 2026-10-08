@@ -69,9 +69,10 @@ export default async function Payroll(props: PageProps<"/payroll">) {
               <div className="flex flex-wrap items-center gap-3 text-sm">
                 <span className={`chip ${closed ? "chip-ok" : "chip-warn"}`}>{closed ? `마감 ${month.closed_at?.slice(0, 10) ?? ""}` : "작성 중"}</span>
                 <span>지급 예정 합계 <b className="tabular-nums">{won(sum)}원</b></span>
-                <span>팀원 총 광고 취급고 <b className="tabular-nums">{won(team.teamNaver)}원</b>
-                  {month.team_goal > 0 && <> / 목표 {won(month.team_goal)}원 ({Math.floor((team.teamNaver / month.team_goal) * 100)}%) {team.achieved ? <span className="chip chip-ok">달성</span> : <span className="chip chip-muted">미달</span>}</>}
+                <span title="네이버(인계건 미포함) + 메타, 바이럴 제외">팀 목표 기준 <b className="tabular-nums">{won(team.goalSpend)}원</b>
+                  {month.team_goal > 0 && <> / 목표 {won(month.team_goal)}원 ({Math.floor((team.goalSpend / month.team_goal) * 100)}%) {team.achieved ? <span className="chip chip-ok">달성</span> : <span className="chip chip-muted">미달</span>}</>}
                 </span>
+                <span className="text-ink-soft" title="서진원 네이버+메타 · 박규진 네이버+메타+바이럴 · 박영서 네이버">팀 수당 기준 <b className="tabular-nums">{won(team.teamNaver)}원</b></span>
               </div>
               {closed ? (
                 me.role === "ceo" && <ConfirmSubmit action={reopenMonth.bind(null, ym)} label="마감 풀기 (대표)" confirmText="마감을 풀면 다시 고칠 수 있습니다. 풀까요?" />
