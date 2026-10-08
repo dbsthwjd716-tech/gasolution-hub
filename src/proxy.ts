@@ -44,5 +44,6 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  // /api/ads/jobs: 데이터베이스 예약 작업이 부르는 수집 주소 (로그인 대신 수집기 열쇠로 확인)
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/ads/jobs|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
 };

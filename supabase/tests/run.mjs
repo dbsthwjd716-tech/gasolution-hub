@@ -15,6 +15,7 @@ const suites = [
   ['본인 급여 보기', './payroll-own.test.mjs'],
   ['직원 관리', './staff-manage.test.mjs'],
   ['루틴·약속', './routines.test.mjs'],
+  ['광고 수집 이전', './ads-import.test.mjs'],
 ];
 let failed = 0;
 for (const [name, file] of suites) {

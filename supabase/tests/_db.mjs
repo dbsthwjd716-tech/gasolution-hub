@@ -28,6 +28,14 @@ export async function setup() {
     create function extensions.gen_random_bytes(int) returns bytea language sql as $$ select decode(repeat('ab', $1), 'hex') $$;
     create function extensions.gen_salt(text) returns text language sql as $$ select 'salt' $$;
     create function extensions.crypt(text, text) returns text language sql as $$ select md5($1 || $2) $$;
+    -- 금고(vault)·pg_net 흉내
+    create schema vault;
+    create table vault.secrets (id uuid primary key default gen_random_uuid(), name text unique, secret text, description text);
+    create view vault.decrypted_secrets as select id, name, secret as decrypted_secret, description from vault.secrets;
+    create function vault.create_secret(secret text, name text default null, description text default '') returns uuid language sql as $$ insert into vault.secrets(secret, name, description) values ($1, $2, $3) returning id $$;
+    create function vault.update_secret(id uuid, secret text default null, name text default null, description text default null) returns void language sql as $$ update vault.secrets set secret = coalesce($2, secret) where vault.secrets.id = $1 $$;
+    create schema net;
+    create function net.http_post(url text, body jsonb default '{}'::jsonb, params jsonb default '{}'::jsonb, headers jsonb default '{}'::jsonb, timeout_milliseconds int default 5000) returns bigint language sql as $$ select 1::bigint $$;
     -- 새 Supabase 프로젝트와 같게: 표를 만들어도 자동으로 권한을 주지 않음 (migration이 직접 줘야 함)
   `);
   for (const f of readdirSync(migDir).filter((f) => f.endsWith('.sql')).sort()) {
