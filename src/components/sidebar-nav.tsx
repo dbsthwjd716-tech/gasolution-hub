@@ -45,7 +45,7 @@ export const GROUPS: Group[] = [
       { href: "/attendance/calendar", label: "근태 달력", icon: "calendar" },
     ],
   },
-  { key: "pay", label: "급여 · 인센티브", managerOnly: true, items: [{ href: "/payroll", label: "급여 · 인센티브", icon: "won" }] },
+  { key: "pay", label: "급여 · 인센티브", items: [{ href: "/payroll", label: "급여 · 인센티브", icon: "won" }] },
 ];
 
 const ICONS = {
@@ -79,7 +79,10 @@ export function Icon({ name, className = "h-[18px] w-[18px]", stroke = 1.7 }: { 
 }
 
 export function visibleGroups(manager: boolean) {
-  return GROUPS.filter((g) => manager || !g.managerOnly);
+  // 직원에게 급여 메뉴는 '내 급여' (본인 마감 급여만)
+  return GROUPS.filter((g) => manager || !g.managerOnly).map((g) =>
+    !manager && g.key === "pay" ? { ...g, items: g.items.map((i) => ({ ...i, label: "내 급여" })) } : g,
+  );
 }
 
 // 지금 화면에 해당하는 메뉴: 가장 길게 맞는 주소 하나만 표시

@@ -11,6 +11,7 @@ async function call<T>(kind: string, start: string | null, end: string | null): 
     const [fn, body] =
       kind === "promo" ? ["hub_promo_spend", { p_start: start, p_end: end, p_token: token }]
       : kind === "naver_split" ? ["hub_naver_split", { p_token: token }]
+      : kind === "perf" ? ["hub_perf_spend", { p_start: start, p_end: end, p_token: token }]
       : ["hub_ads_export", { p_kind: kind, p_start: start, p_end: end, p_token: token }];
     const res = await fetch(`${url}/rest/v1/rpc/${fn}`, {
       method: "POST",
@@ -55,3 +56,10 @@ export type NaverSplitRow = {
 };
 export type NaverSplit = { snapshot_date: string | null; searchad_from: string | null; searchad_through: string | null; gfa_collected_through: string | null; rows: NaverSplitRow[] };
 export const fetchNaverSplit = () => call<NaverSplit>("naver_split", null, null);
+
+// 광고비 실적: 기간 내 네이버 유상실적(검색광고+GFA, VAT 별도) 광고주별 + 메타 계정별(VAT 포함)
+//   handover_cost: 서진원 인계건 (지금 담당이 따로 있고, 그룹이 '진원 인계건'인 소진)
+export type PerfNaver = { manager: string; customer_id: string; advertiser_name: string | null; group: string | null; cost: number; handover_cost: number | null };
+export type PerfMeta = { manager: string; account_name: string; advertiser_name: string | null; spend: number; days: number };
+export type PerfSpend = { naver_through: string | null; meta_through: string | null; naver: PerfNaver[]; meta: PerfMeta[] };
+export const fetchPerfSpend = (start: string, end: string) => call<PerfSpend>("perf", start, end);

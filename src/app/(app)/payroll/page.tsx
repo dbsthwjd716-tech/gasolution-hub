@@ -5,13 +5,15 @@ import { ConfirmSubmit } from "../billing/panel";
 import { addEntry, closeMonth, importDashboardSpend, removeEntry, reopenMonth, saveEntry, saveMonth, startMonth } from "./actions";
 import { currentYm, loadPayrollMonth, shiftYm } from "./data";
 import { DashboardImport, EntryEditor, MonthForm } from "./forms";
+import { MyPayroll } from "./mine";
 
 const won = (n: number) => Math.round(n).toLocaleString("ko-KR");
 
 export default async function Payroll(props: PageProps<"/payroll">) {
   const sp = await props.searchParams;
   const { supabase, me } = await getMe();
-  if (!me || me.role === "staff") return <p className="glass p-5 text-sm">급여·인센티브는 대표·팀장만 볼 수 있습니다.</p>;
+  if (!me) return null;
+  if (me.role === "staff") return <MyPayroll supabase={supabase} name={me.name} />;
   // 기본: 지난달 실적
   const ym = typeof sp.m === "string" && /^\d{4}-\d{2}$/.test(sp.m) ? sp.m : shiftYm(currentYm(), -1);
   const { month, tiers, profiles, rows, team } = await loadPayrollMonth(supabase, ym);
