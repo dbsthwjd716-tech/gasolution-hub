@@ -75,7 +75,18 @@ export class NaverKeyBook {
   }
 }
 
+// 네이버가 "요청이 너무 많음(429)"이나 일시 오류(5xx·연결 끊김)를 주면 잠깐 쉬었다가 다시 (최대 4번, 1·2·4·8초 + 흔들기)
+export const naverRetryable = (status: number) => status === 429 || status >= 500;
 export async function naverGet(keys: NaverKeys, customerId: string, uri: string, query?: URLSearchParams): Promise<NaverResult> {
+  let r = await naverGetOnce(keys, customerId, uri, query);
+  for (let i = 0; i < 4 && naverRetryable(r.status); i++) {
+    await new Promise((ok) => setTimeout(ok, 1000 * 2 ** i + Math.floor(Math.random() * 500)));
+    r = await naverGetOnce(keys, customerId, uri, query);
+  }
+  return r;
+}
+
+async function naverGetOnce(keys: NaverKeys, customerId: string, uri: string, query?: URLSearchParams): Promise<NaverResult> {
   const ts = Date.now().toString();
   const sig = createHmac("sha256", keys.secretKey).update(`${ts}.GET.${uri}`).digest("base64");
   try {

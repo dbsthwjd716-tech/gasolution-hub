@@ -1,6 +1,6 @@
 import "server-only";
 import {
-  daysInclusive, kstDate, loadSecrets, NaverKeyBook, naverCall, naverMessage, pool, readData, saveRows,
+  daysInclusive, kstDate, loadSecrets, NaverKeyBook, naverCall, naverMessage, naverRetryable, pool, readData, saveRows,
   type Advertiser,
 } from "./common";
 import { determineStatus, prevMonthSameDay } from "./rules";
@@ -63,6 +63,8 @@ export async function runBizmoneySnapshot(token: string, opts: { force?: boolean
       return { ok: true, totalCost: Math.round(total), days: rows.length, source: "naver_api" };
     }
     if (src === "naver_api") return { ok: false, message: naverMessage(r.data) ?? `네이버 오류 (${r.status})` };
+    // 네이버가 바빠서(429·일시 오류) 못 받은 것은 피이관으로 바꿔 보지 않고 '실패'로 남김 (다음 실행이 다시 확인)
+    if (naverRetryable(r.status)) return { ok: false, message: naverMessage(r.data) ?? `네이버 일시 오류 (${r.status})` };
     const t = transferredSum(cid, from, to);
     if (t.found) return { ok: true, totalCost: t.totalCost, days: t.days, source: "transferred" };
     return { ok: false, message: naverMessage(r.data) ?? `네이버 오류 (${r.status})` };
@@ -122,7 +124,8 @@ export async function runBizmoneySnapshot(token: string, opts: { force?: boolean
   const skipped: string[] = [];
   await pool(targets, CONCURRENCY, async (adv) => {
     if (Date.now() - started > TIME_BUDGET_MS) { skipped.push(String(adv.customer_id)); return; }
-    const [c, p] = await Promise.all([current(adv), previous(adv)]);
+    const c = await current(adv); // 한 광고주 안에서는 차례로 (동시에 너무 많이 부르면 네이버가 막음)
+    const p = await previous(adv);
     rows.push({ ...c, ...p, snapshot_date: today, captured_at: new Date().toISOString() });
   });
   const saved = await saveRows(token, "ads_bizmoney_snapshots", rows);
