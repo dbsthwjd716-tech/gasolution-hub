@@ -11,7 +11,8 @@ import { campaignTypeLabel, extractStat, num } from "./rules";
 const LOOKBACK_DAYS = 3;
 const PARALLEL_ADVERTISERS = 2;
 const STATS_CONCURRENCY = 6;
-const DEADLINE_MS = 240_000;
+const DEADLINE_MS = 200_000; // 이 뒤로는 새 일을 시작하지 않음
+const HARD_STOP_MS = 270_000; // 네이버 재시도는 여기까지만
 const FIELDS = ["impCnt", "clkCnt", "salesAmt", "ccnt", "convAmt", "purchaseCcnt", "purchaseConvAmt"];
 
 
@@ -28,6 +29,7 @@ export async function runSearchAdDaily(token: string) {
   ]);
   if (!plan.rows.length) return { ok: false, skipped: true, snapshotDate: plan.snapshot_date, message: plan.snapshot_date ? "이번 달 광고비가 있는 광고주가 없습니다." : "비즈머니 기록이 없어 대상을 정할 수 없습니다." };
   const book = new NaverKeyBook(secrets, token);
+  book.deadline = started + HARD_STOP_MS;
   const byCid = new Map(advertisers.map((a) => [String(a.customer_id ?? "").trim(), a]));
   const done = new Set(doneList);
   const targets = plan.rows.map((r) => byCid.get(String(r.customer_id).trim())).filter((a): a is Advertiser => !!a && a.adcost_source !== "transferred");
@@ -62,7 +64,8 @@ export async function runSearchAdDaily(token: string) {
         const q = new URLSearchParams({ id: c.id, fields: JSON.stringify(FIELDS), timeRange: JSON.stringify({ since: d, until: d }), timeIncrement: "allDays" });
         const r = await naverCall(book, adv, "/stats", q);
         results.push(r.ok && r.data !== null ? { c, ok: true, stat: extractStat(r.data) } : { c, ok: false, message: naverMessage(r.data) ?? "캠페인 일별 통계 조회 실패" });
-      });
+      }, late);
+      if (results.length < campaigns.length) return; // 시간이 다 돼 중간에 멈춤 → 이 날짜는 다음 실행이 처음부터 (받은 것만 저장하면 '일부'로 남음)
       const now = new Date().toISOString();
       const rows = results.filter((x) => x.ok).map(({ c, stat }) => ({
         customer_id: cid, campaign_id: c.id, stat_date: d, advertiser_id: adv.id, campaign_name: c.name, campaign_type: c.type, campaign_type_label: c.label,

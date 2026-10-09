@@ -14,7 +14,8 @@ import { determineStatus, prevMonthSameDay } from "./rules";
 //   같은 날 이미 정상 저장된 곳은 건너뜀 (force면 전부 다시)
 
 const CONCURRENCY = 6;
-const TIME_BUDGET_MS = 250_000;
+const TIME_BUDGET_MS = 200_000; // 이 뒤로는 새 광고주를 시작하지 않음 (한 곳당 최대 3번 × 20초)
+const HARD_STOP_MS = 270_000;   // 네이버 재시도는 여기까지만
 
 
 
@@ -33,6 +34,7 @@ export async function runBizmoneySnapshot(token: string, opts: { force?: boolean
     opts.force || opts.customerId ? Promise.resolve([] as string[]) : readData<string[]>(token, "snapshot_done", { from: today }),
   ]);
   const book = new NaverKeyBook(secrets, token);
+  book.deadline = started + HARD_STOP_MS;
   const done = new Set(doneList);
 
   // 피이관 실적: 광고주별 날짜 → 금액
@@ -109,7 +111,8 @@ export async function runBizmoneySnapshot(token: string, opts: { force?: boolean
     const days = daysInclusive(start, pe);
     try {
       const c = await adcost(adv, start, pe);
-      if (!c.ok) return { ...f, prev_active: true, prev_total_cost: 0, prev_daily_average: 0 };
+      // 네이버가 바빠 전월을 못 받으면 0원으로 두지 않고 표시 → 다음 실행이 다시 확인
+      if (!c.ok) return { ...f, prev_active: true, prev_total_cost: 0, prev_daily_average: 0, prev_error: c.message };
       const cost = c.source === "transferred" ? c.totalCost : Math.round(c.totalCost / 1.1);
       const cd = c.source === "transferred" ? c.days : days;
       return { ...f, prev_active: true, prev_total_cost: cost, prev_daily_average: cd > 0 ? Math.round(cost / cd) : 0 };
@@ -125,8 +128,9 @@ export async function runBizmoneySnapshot(token: string, opts: { force?: boolean
   await pool(targets, CONCURRENCY, async (adv) => {
     if (Date.now() - started > TIME_BUDGET_MS) { skipped.push(String(adv.customer_id)); return; }
     const c = await current(adv); // 한 광고주 안에서는 차례로 (동시에 너무 많이 부르면 네이버가 막음)
-    const p = await previous(adv);
-    rows.push({ ...c, ...p, snapshot_date: today, captured_at: new Date().toISOString() });
+    const { prev_error, ...p } = { prev_error: null as string | null, ...(await previous(adv)) };
+    const error = c.error ?? (prev_error ? `전월 광고비 조회 실패: ${prev_error}` : null);
+    rows.push({ ...c, ...p, error, snapshot_date: today, captured_at: new Date().toISOString() });
   });
   const saved = await saveRows(token, "ads_bizmoney_snapshots", rows);
   const count = (s: string) => rows.filter((r) => r.status === s).length;

@@ -67,7 +67,7 @@ export async function refreshBizmoney(_p: RefreshState, _f: FormData): Promise<R
       const { data: req } = await supabase.from("ads_job_requests").select("requested_at").eq("job", "bizmoney-snapshot").maybeSingle();
       if (req?.requested_at) started = new Date(new Date(req.requested_at).getTime() - 2000).toISOString();
     }
-    for (let i = 0; i < 80; i++) {
+    for (let i = 0; i < 92; i++) { // 최대 약 4분 36초 (수집은 270초 안에 끝남)
       await new Promise((r) => setTimeout(r, 3000));
       const { data } = await supabase.from("ads_sync_runs").select("ok,summary").eq("job", "hub:bizmoney-snapshot").gte("started_at", started).order("started_at", { ascending: false }).limit(1);
       const run = data?.[0];

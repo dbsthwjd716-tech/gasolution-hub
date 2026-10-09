@@ -77,6 +77,7 @@ export async function runMetaSync(token: string, range: { from?: string; to?: st
     }
   }
   const summary = { from, to, graphVersion: version, requestedAccounts: accounts.length, successfulAccounts: ok, failedAccounts: failed, skippedForTime: skipped, rowsUpserted, results };
+  if (skipped && !ok) throw Object.assign(new Error(`시간 제한으로 메타 계정 ${skipped}개를 못 했습니다`), { summary });
   if (failed && !ok) throw Object.assign(new Error(`메타 계정 ${failed}개 모두 실패: ${results[0]?.message ?? ""}`), { summary });
   return summary;
 }
